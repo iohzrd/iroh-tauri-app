@@ -1,8 +1,17 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import Timeago from "$lib/Timeago.svelte";
+  import {
+    avatarColor,
+    getInitials,
+    shortId,
+    getDisplayName,
+    clearDisplayNameCache,
+    evictDisplayName,
+    copyToClipboard,
+  } from "$lib/utils";
 
   interface MediaAttachment {
     hash: string;
@@ -42,72 +51,80 @@
   let fileInput = $state<HTMLInputElement>(null!);
   let copyFeedback = $state("");
   let pendingDeleteId = $state<string | null>(null);
+  let showScrollTop = $state(false);
+  let toastMessage = $state("");
+  let toastType = $state<"error" | "success">("error");
 
   // Cache for fetched blob URLs so we don't re-fetch
   const blobUrlCache = new Map<string, string>();
 
-  // Cache for remote display names
-  const displayNameCache = new Map<string, string>();
-
-  // Deterministic color from a pubkey for avatars
-  function avatarColor(pubkey: string): string {
-    const colors = [
-      "#7c3aed",
-      "#2563eb",
-      "#059669",
-      "#d97706",
-      "#dc2626",
-      "#db2777",
-      "#7c3aed",
-      "#0891b2",
-    ];
-    let hash = 0;
-    for (let i = 0; i < pubkey.length; i++) {
-      hash = pubkey.charCodeAt(i) + ((hash << 5) - hash);
+  function collectMediaHashes(postList: Post[]): Set<string> {
+    const hashes = new Set<string>();
+    for (const p of postList) {
+      if (p.media) {
+        for (const m of p.media) hashes.add(m.hash);
+      }
     }
-    return colors[Math.abs(hash) % colors.length];
+    return hashes;
   }
 
-  function getInitials(name: string): string {
-    if (!name || name === "You") return "Y";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return name.slice(0, 2).toUpperCase();
-  }
-
-  async function getDisplayName(pubkey: string): Promise<string> {
-    if (pubkey === nodeId) return "You";
-    const cached = displayNameCache.get(pubkey);
-    if (cached !== undefined) return cached;
-    try {
-      const profile: { display_name: string; bio: string } | null =
-        await invoke("get_remote_profile", { pubkey });
-      const name =
-        profile && profile.display_name
-          ? profile.display_name
-          : shortId(pubkey);
-      displayNameCache.set(pubkey, name);
-      return name;
-    } catch {
-      const name = shortId(pubkey);
-      displayNameCache.set(pubkey, name);
-      return name;
+  function revokeStaleBlobUrls(newPosts: Post[]) {
+    const activeHashes = collectMediaHashes(newPosts);
+    for (const [hash, url] of blobUrlCache) {
+      if (!activeHashes.has(hash)) {
+        URL.revokeObjectURL(url);
+        blobUrlCache.delete(hash);
+      }
     }
   }
 
-  async function copyToClipboard(text: string, label: string) {
-    await navigator.clipboard.writeText(text);
+  function revokeAllBlobUrls() {
+    for (const url of blobUrlCache.values()) {
+      URL.revokeObjectURL(url);
+    }
+    blobUrlCache.clear();
+  }
+
+  function showToast(message: string, type: "error" | "success" = "error") {
+    toastMessage = message;
+    toastType = type;
+    setTimeout(() => (toastMessage = ""), 4000);
+  }
+
+  async function copyWithFeedback(text: string, label: string) {
+    await copyToClipboard(text);
     copyFeedback = label;
     setTimeout(() => (copyFeedback = ""), 1500);
   }
 
+  function escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
   function linkify(text: string): string {
-    const urlPattern = /https?:\/\/[^\s<>\"')\]]+/g;
-    return text.replace(
-      urlPattern,
-      (url) =>
-        `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`,
-    );
+    // Extract URLs before escaping, then rebuild with escaped non-URL segments
+    const urlPattern = /https?:\/\/[^\s<>"')\]]+/g;
+    const parts: string[] = [];
+    let lastIndex = 0;
+    let match;
+    while ((match = urlPattern.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(escapeHtml(text.slice(lastIndex, match.index)));
+      }
+      const url = match[0];
+      parts.push(
+        `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`,
+      );
+      lastIndex = urlPattern.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      parts.push(escapeHtml(text.slice(lastIndex)));
+    }
+    return parts.join("");
   }
 
   async function init() {
@@ -122,8 +139,14 @@
 
   async function loadFeed() {
     try {
-      posts = await invoke("get_feed", { limit: 50, before: null });
+      const newPosts: Post[] = await invoke("get_feed", {
+        limit: 50,
+        before: null,
+      });
+      revokeStaleBlobUrls(newPosts);
+      posts = newPosts;
     } catch (e) {
+      showToast("Failed to load feed");
       console.error("Failed to load feed:", e);
     }
   }
@@ -132,13 +155,20 @@
     syncing = true;
     try {
       const follows: { pubkey: string }[] = await invoke("get_follows");
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         follows.map((f) =>
           invoke("sync_posts", { pubkey: f.pubkey, before: null, limit: 50 }),
         ),
       );
+      const failures = results.filter((r) => r.status === "rejected").length;
+      if (failures > 0 && failures < follows.length) {
+        showToast(`Synced, but ${failures} peer(s) unreachable`);
+      } else if (failures > 0 && failures === follows.length) {
+        showToast("Could not reach any peers");
+      }
       await loadFeed();
     } catch (e) {
+      showToast("Sync failed");
       console.error("Failed to sync:", e);
     }
     syncing = false;
@@ -172,6 +202,7 @@
           },
         ];
       } catch (e) {
+        showToast(`Failed to upload ${file.name}`);
         console.error("Failed to upload file:", file.name, e);
       }
     }
@@ -208,6 +239,7 @@
       attachments = [];
       await loadFeed();
     } catch (e) {
+      showToast("Failed to create post");
       console.error("Failed to create post:", e);
     }
     posting = false;
@@ -223,6 +255,7 @@
       await invoke("delete_post", { id: pendingDeleteId });
       await loadFeed();
     } catch (e) {
+      showToast("Failed to delete post");
       console.error("Failed to delete post:", e);
     }
     pendingDeleteId = null;
@@ -247,10 +280,6 @@
     return url;
   }
 
-  function shortId(id: string) {
-    return id.slice(0, 8) + "..." + id.slice(-4);
-  }
-
   function formatSize(bytes: number) {
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
@@ -272,21 +301,40 @@
     }
   }
 
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleScroll() {
+    showScrollTop = window.scrollY > 400;
+  }
+
   onMount(() => {
     init();
-    listen("feed-updated", () => {
-      displayNameCache.clear();
-      loadFeed();
-    });
-    listen("profile-updated", (event) => {
-      const pubkey = event.payload as string;
-      displayNameCache.delete(pubkey);
-      loadFeed();
-    });
+    const unlisteners: Promise<UnlistenFn>[] = [];
+    unlisteners.push(
+      listen("feed-updated", () => {
+        clearDisplayNameCache();
+        loadFeed();
+      }),
+    );
+    unlisteners.push(
+      listen("profile-updated", (event) => {
+        const pubkey = event.payload as string;
+        evictDisplayName(pubkey);
+        loadFeed();
+      }),
+    );
+    window.addEventListener("scroll", handleScroll);
     const interval = setInterval(() => {
       syncAll();
     }, 60000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("scroll", handleScroll);
+      unlisteners.forEach((p) => p.then((fn) => fn()));
+      revokeAllBlobUrls();
+    };
   });
 </script>
 
@@ -299,7 +347,10 @@
   <div class="node-id">
     <span class="label">You</span>
     <code>{shortId(nodeId)}</code>
-    <button class="copy-btn" onclick={() => copyToClipboard(nodeId, "node-id")}>
+    <button
+      class="copy-btn"
+      onclick={() => copyWithFeedback(nodeId, "node-id")}
+    >
       {copyFeedback === "node-id" ? "Copied!" : "Copy ID"}
     </button>
   </div>
@@ -313,6 +364,7 @@
       onkeydown={handleKey}
     ></textarea>
     <div class="compose-meta">
+      <span class="hint">Shift+Enter for newline</span>
       <span
         class="char-count"
         class:warn={newPost.length > MAX_POST_LENGTH * 0.9}
@@ -389,18 +441,18 @@
     {#each posts as post (post.id)}
       <article class="post">
         <div class="post-header">
-          {#await getDisplayName(post.author)}
+          {#await getDisplayName(post.author, nodeId)}
             {@const fallback =
               post.author === nodeId ? "You" : shortId(post.author)}
             <div class="avatar" style="background:{avatarColor(post.author)}">
-              {getInitials(fallback)}
+              {getInitials(fallback, post.author === nodeId)}
             </div>
             <span class="author" class:self={post.author === nodeId}>
               {fallback}
             </span>
           {:then name}
             <div class="avatar" style="background:{avatarColor(post.author)}">
-              {getInitials(name)}
+              {getInitials(name, post.author === nodeId)}
             </div>
             <span class="author" class:self={post.author === nodeId}>
               {name}
@@ -463,26 +515,19 @@
   </button>
 {/if}
 
+{#if toastMessage}
+  <div class="toast" class:error={toastType === "error"}>
+    {toastMessage}
+  </div>
+{/if}
+
+{#if showScrollTop}
+  <button class="scroll-top" onclick={scrollToTop} aria-label="Scroll to top">
+    &#8593;
+  </button>
+{/if}
+
 <style>
-  /* Loading spinner */
-  .loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 3rem;
-    gap: 1rem;
-    color: #888;
-  }
-
-  .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #2a2a4a;
-    border-top-color: #a78bfa;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
   .btn-spinner {
     display: inline-block;
     width: 14px;
@@ -564,8 +609,14 @@
 
   .compose-meta {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 0.25rem;
+  }
+
+  .hint {
+    font-size: 0.7rem;
+    color: #444;
   }
 
   .char-count {
@@ -746,6 +797,25 @@
     border-radius: 8px;
     padding: 1rem;
     margin-bottom: 0.5rem;
+    transition:
+      border-color 0.2s,
+      transform 0.15s;
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .post:hover {
+    border-color: #3a3a5a;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .post-header {
@@ -898,5 +968,65 @@
   .refresh:disabled {
     opacity: 0.7;
     cursor: default;
+  }
+
+  /* Toast notifications */
+  .toast {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2a2a4a;
+    color: #e0e0e0;
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    z-index: 200;
+    animation: toastIn 0.3s ease-out;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .toast.error {
+    border-left: 3px solid #ef4444;
+  }
+
+  @keyframes toastIn {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+
+  /* Scroll to top */
+  .scroll-top {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition:
+      background 0.2s,
+      transform 0.2s;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .scroll-top:hover {
+    background: #6d28d9;
+    transform: scale(1.1);
   }
 </style>

@@ -1,6 +1,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import {
+    avatarColor,
+    getInitials,
+    shortId,
+    getDisplayName,
+    copyToClipboard,
+  } from "$lib/utils";
 
   interface FollowEntry {
     pubkey: string;
@@ -14,32 +21,8 @@
   let status = $state("");
   let copyFeedback = $state("");
 
-  function avatarColor(pubkey: string): string {
-    const colors = [
-      "#7c3aed",
-      "#2563eb",
-      "#059669",
-      "#d97706",
-      "#dc2626",
-      "#db2777",
-      "#7c3aed",
-      "#0891b2",
-    ];
-    let hash = 0;
-    for (let i = 0; i < pubkey.length; i++) {
-      hash = pubkey.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return colors[Math.abs(hash) % colors.length];
-  }
-
-  function getInitials(name: string): string {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return name.slice(0, 2).toUpperCase();
-  }
-
-  async function copyToClipboard(text: string, label: string) {
-    await navigator.clipboard.writeText(text);
+  async function copyWithFeedback(text: string, label: string) {
+    await copyToClipboard(text);
     copyFeedback = label;
     setTimeout(() => (copyFeedback = ""), 1500);
   }
@@ -86,27 +69,6 @@
     }
   }
 
-  const displayNameCache = new Map<string, string>();
-
-  async function getDisplayName(pubkey: string): Promise<string | null> {
-    const cached = displayNameCache.get(pubkey);
-    if (cached !== undefined) return cached || null;
-    try {
-      const profile: { display_name: string; bio: string } | null =
-        await invoke("get_remote_profile", { pubkey });
-      const name = profile && profile.display_name ? profile.display_name : "";
-      displayNameCache.set(pubkey, name);
-      return name || null;
-    } catch {
-      displayNameCache.set(pubkey, "");
-      return null;
-    }
-  }
-
-  function shortId(id: string) {
-    return id.slice(0, 8) + "..." + id.slice(-4);
-  }
-
   function handleKey(e: KeyboardEvent) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -120,7 +82,10 @@
 </script>
 
 {#if loading}
-  <p class="status">Loading...</p>
+  <div class="loading">
+    <div class="spinner"></div>
+    <p>Loading...</p>
+  </div>
 {:else}
   <h2>Follows</h2>
 
@@ -141,12 +106,12 @@
     {#each follows as f (f.pubkey)}
       <div class="follow-item">
         <div class="follow-info">
-          {#await getDisplayName(f.pubkey) then name}
+          {#await getDisplayName(f.pubkey, "") then name}
             <div class="avatar" style="background:{avatarColor(f.pubkey)}">
-              {getInitials(name || shortId(f.pubkey))}
+              {getInitials(name)}
             </div>
             <div class="follow-identity">
-              {#if name}
+              {#if name !== shortId(f.pubkey)}
                 <span class="display-name">{name}</span>
               {/if}
               <code>{shortId(f.pubkey)}</code>
@@ -154,7 +119,7 @@
           {/await}
           <button
             class="copy-btn"
-            onclick={() => copyToClipboard(f.pubkey, f.pubkey)}
+            onclick={() => copyWithFeedback(f.pubkey, f.pubkey)}
           >
             {copyFeedback === f.pubkey ? "Copied!" : "Copy"}
           </button>

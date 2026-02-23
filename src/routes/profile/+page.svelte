@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { copyToClipboard } from "$lib/utils";
 
   let nodeId = $state("");
   let displayName = $state("");
@@ -11,7 +12,7 @@
   let copyFeedback = $state(false);
 
   async function copyNodeId() {
-    await navigator.clipboard.writeText(nodeId);
+    await copyToClipboard(nodeId);
     copyFeedback = true;
     setTimeout(() => (copyFeedback = false), 1500);
   }
@@ -49,7 +50,10 @@
 </script>
 
 {#if loading}
-  <p class="status">Loading...</p>
+  <div class="loading">
+    <div class="spinner"></div>
+    <p>Loading...</p>
+  </div>
 {:else}
   <h2>Your Profile</h2>
 

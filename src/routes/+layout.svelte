@@ -75,4 +75,28 @@
   main {
     padding: 1rem 1rem 2rem;
   }
+
+  :global(.loading) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3rem;
+    gap: 1rem;
+    color: #888;
+  }
+
+  :global(.spinner) {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #2a2a4a;
+    border-top-color: #a78bfa;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 </style>
