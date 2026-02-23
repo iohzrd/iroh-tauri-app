@@ -5,7 +5,7 @@ mod sync;
 use crate::gossip::FeedManager;
 use crate::storage::{FollowEntry, MediaAttachment, Post, Profile, Storage};
 use iroh::{Endpoint, SecretKey, protocol::Router};
-use iroh_blobs::{BlobsProtocol, HashAndFormat, store::mem::MemStore, ticket::BlobTicket};
+use iroh_blobs::{BlobsProtocol, HashAndFormat, store::fs::FsStore, ticket::BlobTicket};
 use iroh_gossip::Gossip;
 use rand::Rng;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ pub struct AppState {
     pub endpoint: Endpoint,
     pub router: Router,
     pub blobs: BlobsProtocol,
-    pub store: MemStore,
+    pub store: FsStore,
     pub storage: Arc<Storage>,
     pub feed: FeedManager,
 }
@@ -183,9 +183,30 @@ async fn follow_user(state: State<'_, Arc<Mutex<AppState>>>, pubkey: String) -> 
     state.storage.follow(&entry).map_err(|e| e.to_string())?;
     state
         .feed
-        .follow_user(pubkey)
+        .follow_user(pubkey.clone())
         .await
         .map_err(|e| e.to_string())?;
+
+    // Sync existing posts from the followed user
+    let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
+    match sync::fetch_remote_posts(&state.endpoint, target, &pubkey, None, 50).await {
+        Ok(posts) => {
+            for post in &posts {
+                if let Err(e) = state.storage.insert_post(post) {
+                    eprintln!("[follow-sync] failed to store post: {e}");
+                }
+            }
+            println!(
+                "[follow-sync] synced {} posts from {}",
+                posts.len(),
+                &pubkey[..8]
+            );
+        }
+        Err(e) => {
+            eprintln!("[follow-sync] failed to sync from {}: {e}", &pubkey[..8]);
+        }
+    }
+
     Ok(())
 }
 
@@ -368,8 +389,11 @@ pub fn run() {
 
                 println!("Node ID: {}", endpoint.id());
 
-                let store = MemStore::new();
-                let blobs = BlobsProtocol::new(store.as_ref(), None);
+                let blobs_dir = data_dir.join("blobs");
+                let store = FsStore::load(&blobs_dir)
+                    .await
+                    .expect("failed to open blob store");
+                let blobs = BlobsProtocol::new(&store, None);
                 let gossip = Gossip::builder().spawn(endpoint.clone());
 
                 let sync_handler = sync::SyncHandler::new(storage_clone.clone());
@@ -380,7 +404,12 @@ pub fn run() {
                     .accept(sync::SYNC_ALPN.to_vec(), sync_handler)
                     .spawn();
 
-                let mut feed = FeedManager::new(gossip, endpoint.clone(), storage_clone.clone());
+                let mut feed = FeedManager::new(
+                    gossip,
+                    endpoint.clone(),
+                    storage_clone.clone(),
+                    handle.clone(),
+                );
 
                 if let Err(e) = feed.start_own_feed().await {
                     eprintln!("Failed to start own feed: {e}");
@@ -397,6 +426,39 @@ pub fn run() {
                         eprintln!("Failed to resubscribe to {}: {e}", f.pubkey);
                     }
                 }
+
+                // Sync historical posts from followed users in the background
+                let sync_endpoint = endpoint.clone();
+                let sync_storage = storage_clone.clone();
+                let sync_follows = follows.clone();
+                tokio::spawn(async move {
+                    for f in &sync_follows {
+                        let target: iroh::EndpointId = match f.pubkey.parse() {
+                            Ok(t) => t,
+                            Err(_) => continue,
+                        };
+                        match sync::fetch_remote_posts(&sync_endpoint, target, &f.pubkey, None, 50)
+                            .await
+                        {
+                            Ok(posts) => {
+                                for post in &posts {
+                                    let _ = sync_storage.insert_post(post);
+                                }
+                                println!(
+                                    "[startup-sync] synced {} posts from {}",
+                                    posts.len(),
+                                    &f.pubkey[..8]
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "[startup-sync] failed to sync from {}: {e}",
+                                    &f.pubkey[..8]
+                                );
+                            }
+                        }
+                    }
+                });
 
                 let state = Arc::new(Mutex::new(AppState {
                     endpoint,

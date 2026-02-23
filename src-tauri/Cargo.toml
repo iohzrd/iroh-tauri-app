@@ -23,7 +23,7 @@ bytes = "1"
 futures-lite = "2"
 getrandom = "0.4.1"
 iroh = "0.96"
-iroh-blobs = "0.98"
+iroh-blobs = { version = "0.98", features = ["fs-store"] }
 iroh-gossip = "0.96"
 postcard = { version = "1", features = ["alloc"] }
 rand = "0.8"

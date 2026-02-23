@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
   interface MediaAttachment {
@@ -77,6 +78,20 @@
       posts = await invoke("get_feed", { limit: 50, before: null });
     } catch (e) {
       console.error("Failed to load feed:", e);
+    }
+  }
+
+  async function syncAll() {
+    try {
+      const follows: { pubkey: string }[] = await invoke("get_follows");
+      await Promise.allSettled(
+        follows.map((f) =>
+          invoke("sync_posts", { pubkey: f.pubkey, before: null, limit: 50 }),
+        ),
+      );
+      await loadFeed();
+    } catch (e) {
+      console.error("Failed to sync:", e);
     }
   }
 
@@ -199,6 +214,9 @@
 
   onMount(() => {
     init();
+    listen("feed-updated", () => {
+      loadFeed();
+    });
   });
 </script>
 
@@ -319,7 +337,7 @@
     {/each}
   </div>
 
-  <button class="refresh" onclick={loadFeed}>Refresh</button>
+  <button class="refresh" onclick={syncAll}>Refresh</button>
 {/if}
 
 <style>

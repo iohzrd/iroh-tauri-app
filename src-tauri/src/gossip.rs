@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,16 +32,23 @@ pub struct FeedManager {
     pub my_sender: Option<GossipSender>,
     pub subscriptions: HashMap<String, (GossipSender, JoinHandle<()>)>,
     pub storage: Arc<Storage>,
+    pub app_handle: AppHandle,
 }
 
 impl FeedManager {
-    pub fn new(gossip: Gossip, endpoint: Endpoint, storage: Arc<Storage>) -> Self {
+    pub fn new(
+        gossip: Gossip,
+        endpoint: Endpoint,
+        storage: Arc<Storage>,
+        app_handle: AppHandle,
+    ) -> Self {
         Self {
             gossip,
             endpoint,
             my_sender: None,
             subscriptions: HashMap::new(),
             storage,
+            app_handle,
         }
     }
 
@@ -94,6 +102,7 @@ impl FeedManager {
 
         let storage = self.storage.clone();
         let pk = pubkey.clone();
+        let app_handle = self.app_handle.clone();
         let handle = tokio::spawn(async move {
             let mut receiver = receiver;
             loop {
@@ -106,6 +115,7 @@ impl FeedManager {
                                         if let Err(e) = storage.insert_post(&post) {
                                             eprintln!("[gossip] failed to store post: {e}");
                                         }
+                                        let _ = app_handle.emit("feed-updated", ());
                                     }
                                 }
                                 Ok(GossipMessage::ProfileUpdate(profile)) => {
