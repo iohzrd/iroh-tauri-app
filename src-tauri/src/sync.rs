@@ -85,6 +85,17 @@ impl ProtocolHandler for SyncHandler {
             .map_err(AcceptError::from_err)?;
         send.finish().map_err(AcceptError::from_err)?;
 
+        // Keep the connection alive until the peer is done reading.
+        // Without this, dropping Connection sends ApplicationClose(error_code: 0)
+        // which kills the client's read_to_end before it completes.
+        // stopped() resolves when the peer finishes reading or the stream is reset.
+        let _ = send.stopped().await;
+
+        println!(
+            "[sync-server] completed sync for {}",
+            &remote.to_string()[..8]
+        );
+
         Ok(())
     }
 }
@@ -153,6 +164,9 @@ pub async fn fetch_remote_posts(
         &author[..8],
         start.elapsed().as_secs_f64()
     );
+
+    // Explicitly close so the server's stopped() resolves promptly
+    conn.close(0u32.into(), b"done");
 
     Ok(resp.posts)
 }
