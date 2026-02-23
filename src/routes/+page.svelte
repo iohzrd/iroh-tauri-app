@@ -224,6 +224,7 @@
   onMount(() => {
     init();
     listen("feed-updated", () => {
+      displayNameCache.clear();
       loadFeed();
     });
     listen("profile-updated", (event) => {

@@ -1,4 +1,4 @@
-use crate::storage::{Post, Storage};
+use crate::storage::{Post, Profile, Storage};
 use iroh::{
     Endpoint, EndpointAddr, EndpointId,
     endpoint::Connection,
@@ -19,6 +19,8 @@ pub struct SyncRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyncResponse {
     pub posts: Vec<Post>,
+    #[serde(default)]
+    pub profile: Option<Profile>,
 }
 
 #[derive(Debug, Clone)]
@@ -71,13 +73,17 @@ impl ProtocolHandler for SyncHandler {
             None => posts,
         };
 
+        // Include our own profile in the response
+        let profile = self.storage.get_profile().ok().flatten();
+
         println!(
-            "[sync-server] responding with {} posts to {}",
+            "[sync-server] responding with {} posts (profile: {}) to {}",
             posts.len(),
+            profile.as_ref().map_or("none", |p| &p.display_name),
             &remote.to_string()[..8]
         );
 
-        let resp = SyncResponse { posts };
+        let resp = SyncResponse { posts, profile };
         let resp_bytes = serde_json::to_vec(&resp).map_err(AcceptError::from_err)?;
 
         send.write_all(&resp_bytes)
@@ -111,7 +117,7 @@ pub async fn fetch_remote_posts(
     author: &str,
     before: Option<u64>,
     limit: u32,
-) -> anyhow::Result<Vec<Post>> {
+) -> anyhow::Result<(Vec<Post>, Option<Profile>)> {
     let addr = EndpointAddr::from(target);
     println!("[sync-client] connecting to {} for posts...", &author[..8]);
     let start = std::time::Instant::now();
@@ -163,14 +169,15 @@ pub async fn fetch_remote_posts(
     let resp: SyncResponse = serde_json::from_slice(&resp_bytes)?;
 
     println!(
-        "[sync-client] received {} posts from {} in {:.1}s",
+        "[sync-client] received {} posts (profile: {}) from {} in {:.1}s",
         resp.posts.len(),
+        resp.profile.as_ref().map_or("none", |p| &p.display_name),
         &author[..8],
         start.elapsed().as_secs_f64()
     );
 
-    // Explicitly close so the server's stopped() resolves promptly
+    // Explicitly close so the server's closed().await resolves promptly
     conn.close(0u32.into(), b"done");
 
-    Ok(resp.posts)
+    Ok((resp.posts, resp.profile))
 }

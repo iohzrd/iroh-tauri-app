@@ -178,7 +178,7 @@ async fn sync_posts(
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
 
     println!("[sync] requesting posts from {}...", &pubkey[..8]);
-    let posts = sync::fetch_remote_posts(
+    let (posts, profile) = sync::fetch_remote_posts(
         &state.endpoint,
         target,
         &pubkey,
@@ -194,10 +194,15 @@ async fn sync_posts(
         &pubkey[..8]
     );
 
-    // Store fetched posts locally
+    // Store fetched posts and profile locally
     for post in &posts {
         if let Err(e) = state.storage.insert_post(post) {
             eprintln!("[sync] failed to store post: {e}");
+        }
+    }
+    if let Some(profile) = &profile {
+        if let Err(e) = state.storage.save_remote_profile(&pubkey, profile) {
+            eprintln!("[sync] failed to store profile: {e}");
         }
     }
 
@@ -227,10 +232,15 @@ async fn follow_user(state: State<'_, Arc<Mutex<AppState>>>, pubkey: String) -> 
     println!("[follow] syncing posts from {}...", &pubkey[..8]);
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
     match sync::fetch_remote_posts(&state.endpoint, target, &pubkey, None, 50).await {
-        Ok(posts) => {
+        Ok((posts, profile)) => {
             for post in &posts {
                 if let Err(e) = state.storage.insert_post(post) {
                     eprintln!("[follow-sync] failed to store post: {e}");
+                }
+            }
+            if let Some(profile) = &profile {
+                if let Err(e) = state.storage.save_remote_profile(&pubkey, profile) {
+                    eprintln!("[follow-sync] failed to store profile: {e}");
                 }
             }
             println!(
@@ -565,11 +575,15 @@ pub fn run() {
                             .await;
                             let elapsed = start.elapsed();
                             match result {
-                                Ok(Ok(posts)) => {
+                                Ok(Ok((posts, profile))) => {
                                     for post in &posts {
                                         let _ = sync_storage.insert_post(post);
                                     }
-                                    if !posts.is_empty() {
+                                    if let Some(profile) = &profile {
+                                        let _ = sync_storage
+                                            .save_remote_profile(&f.pubkey, profile);
+                                    }
+                                    if !posts.is_empty() || profile.is_some() {
                                         let _ = sync_handle.emit("feed-updated", ());
                                     }
                                     println!(
