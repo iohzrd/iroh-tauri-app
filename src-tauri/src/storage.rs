@@ -55,53 +55,41 @@ impl std::fmt::Debug for Storage {
 }
 
 impl Storage {
+    const MIGRATIONS: &'static [(&'static str, &'static str)] =
+        &[("001_initial", include_str!("../migrations/001_initial.sql"))];
+
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let conn = Connection::open(path.as_ref())?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS profile (
-                key TEXT PRIMARY KEY,
-                display_name TEXT NOT NULL,
-                bio TEXT NOT NULL,
-                avatar_hash TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS posts (
-                id TEXT NOT NULL,
-                author TEXT NOT NULL,
-                content TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
-                media_json TEXT NOT NULL DEFAULT '[]',
-                PRIMARY KEY (author, id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp DESC);
-            CREATE INDEX IF NOT EXISTS idx_posts_author_timestamp ON posts(author, timestamp DESC);
-
-            CREATE TABLE IF NOT EXISTS follows (
-                pubkey TEXT PRIMARY KEY,
-                alias TEXT,
-                followed_at INTEGER NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS remote_profiles (
-                pubkey TEXT PRIMARY KEY,
-                display_name TEXT NOT NULL,
-                bio TEXT NOT NULL,
-                avatar_hash TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS followers (
-                pubkey TEXT PRIMARY KEY,
-                first_seen INTEGER NOT NULL,
-                last_seen INTEGER NOT NULL,
-                is_online INTEGER NOT NULL DEFAULT 0
-            );
-            ",
-        )?;
+        Self::run_migrations(&conn)?;
         Ok(Self {
             db: Mutex::new(conn),
         })
+    }
+
+    fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                name TEXT PRIMARY KEY,
+                applied_at INTEGER NOT NULL
+            )",
+        )?;
+        for (name, sql) in Self::MIGRATIONS {
+            let already_applied: bool = conn.query_row(
+                "SELECT COUNT(*) > 0 FROM schema_migrations WHERE name=?1",
+                params![name],
+                |row| row.get(0),
+            )?;
+            if !already_applied {
+                println!("[storage] applying migration: {name}");
+                conn.execute_batch(sql)?;
+                conn.execute(
+                    "INSERT INTO schema_migrations (name, applied_at) VALUES (?1, strftime('%s', 'now'))",
+                    params![name],
+                )?;
+            }
+        }
+        Ok(())
     }
 
     // -- Profile --
