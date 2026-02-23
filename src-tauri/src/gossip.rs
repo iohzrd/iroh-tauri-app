@@ -59,8 +59,56 @@ impl FeedManager {
         println!("[gossip] starting own feed topic for {}", &my_id[..8]);
 
         let topic_handle = self.gossip.subscribe(topic, vec![]).await?;
-        let (sender, _receiver) = topic_handle.split();
+        let (sender, receiver) = topic_handle.split();
         self.my_sender = Some(sender);
+
+        // Listen for neighbors joining/leaving our own feed topic (followers)
+        let storage = self.storage.clone();
+        let app_handle = self.app_handle.clone();
+        tokio::spawn(async move {
+            println!("[gossip-own] listener started for own feed neighbors");
+            let mut receiver = receiver;
+            loop {
+                match receiver.try_next().await {
+                    Ok(Some(event)) => match &event {
+                        Event::NeighborUp(endpoint_id) => {
+                            let pubkey = endpoint_id.to_string();
+                            println!("[gossip-own] new follower: {}", &pubkey[..8]);
+                            let now = crate::now_millis();
+                            match storage.upsert_follower(&pubkey, now) {
+                                Ok(is_new) => {
+                                    let _ = app_handle.emit("follower-changed", &pubkey);
+                                    if is_new {
+                                        let _ = app_handle.emit("new-follower", &pubkey);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("[gossip-own] failed to store follower: {e}");
+                                }
+                            }
+                        }
+                        Event::NeighborDown(endpoint_id) => {
+                            let pubkey = endpoint_id.to_string();
+                            println!("[gossip-own] follower left: {}", &pubkey[..8]);
+                            if let Err(e) = storage.set_follower_offline(&pubkey) {
+                                eprintln!("[gossip-own] failed to update follower: {e}");
+                            }
+                            let _ = app_handle.emit("follower-changed", &pubkey);
+                        }
+                        _ => {}
+                    },
+                    Ok(None) => {
+                        println!("[gossip-own] own feed stream ended");
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("[gossip-own] own feed receiver error: {e}");
+                        break;
+                    }
+                }
+            }
+            println!("[gossip-own] own feed listener stopped");
+        });
 
         Ok(())
     }

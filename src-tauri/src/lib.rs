@@ -3,7 +3,7 @@ mod storage;
 mod sync;
 
 use crate::gossip::FeedManager;
-use crate::storage::{FollowEntry, MediaAttachment, Post, Profile, Storage};
+use crate::storage::{FollowEntry, FollowerEntry, MediaAttachment, Post, Profile, Storage};
 use iroh::{Endpoint, SecretKey, protocol::Router};
 use iroh_blobs::{BlobsProtocol, HashAndFormat, store::fs::FsStore, ticket::BlobTicket};
 use iroh_gossip::Gossip;
@@ -317,6 +317,11 @@ async fn get_follows(state: State<'_, Arc<AppState>>) -> Result<Vec<FollowEntry>
     state.storage.get_follows().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn get_followers(state: State<'_, Arc<AppState>>) -> Result<Vec<FollowerEntry>, String> {
+    state.storage.get_followers().map_err(|e| e.to_string())
+}
+
 // -- Blobs (media) --
 
 #[tauri::command]
@@ -466,6 +471,7 @@ struct NodeStatus {
     has_relay: bool,
     relay_url: Option<String>,
     follow_count: usize,
+    follower_count: usize,
 }
 
 #[tauri::command]
@@ -475,12 +481,14 @@ async fn get_node_status(state: State<'_, Arc<AppState>>) -> Result<NodeStatus, 
     let has_relay = relay_url.is_some();
     let feed = state.feed.lock().await;
     let follow_count = feed.subscriptions.len();
+    let follower_count = state.storage.get_followers().map(|f| f.len()).unwrap_or(0);
 
     Ok(NodeStatus {
         node_id: state.endpoint.id().to_string(),
         has_relay,
         relay_url,
         follow_count,
+        follower_count,
     })
 }
 
@@ -587,7 +595,7 @@ pub fn run() {
             println!("[setup] data dir: {}", data_dir.display());
 
             let secret_key = load_or_create_key(&data_dir.join("identity.key"));
-            let db_path = data_dir.join("social.redb");
+            let db_path = data_dir.join("social.db");
             let storage = Arc::new(Storage::open(&db_path).expect("failed to open database"));
             println!("[setup] database opened");
 
@@ -743,6 +751,7 @@ pub fn run() {
             follow_user,
             unfollow_user,
             get_follows,
+            get_followers,
             add_blob,
             fetch_blob,
             add_blob_bytes,

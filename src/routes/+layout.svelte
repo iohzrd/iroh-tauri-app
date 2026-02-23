@@ -35,7 +35,7 @@
       <span
         class="status-indicator"
         title={status.has_relay
-          ? `Relay connected | ${status.follow_count} follow(s)`
+          ? `Relay connected | ${status.follow_count} following | ${status.follower_count} follower(s)`
           : "No relay connection"}
       >
         <span

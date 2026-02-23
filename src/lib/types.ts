@@ -35,9 +35,17 @@ export interface FollowEntry {
   followed_at: number;
 }
 
+export interface FollowerEntry {
+  pubkey: string;
+  first_seen: number;
+  last_seen: number;
+  is_online: boolean;
+}
+
 export interface NodeStatus {
   node_id: string;
   has_relay: boolean;
   relay_url: string | null;
   follow_count: number;
+  follower_count: number;
 }

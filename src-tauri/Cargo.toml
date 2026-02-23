@@ -25,9 +25,8 @@ getrandom = "0.4.1"
 iroh = "0.96"
 iroh-blobs = { version = "0.98", features = ["fs-store"] }
 iroh-gossip = "0.96"
-postcard = { version = "1", features = ["alloc"] }
 rand = "0.8"
-redb = "3.1.0"
+rusqlite = { version = "0.33", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

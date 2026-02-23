@@ -55,6 +55,25 @@ npm run tauri build
 
 Produces a native desktop application in `src-tauri/target/release/`.
 
+## Community Server (Planned)
+
+A self-hosted, headless server binary that adds opt-in aggregation, discovery, full-text search, and trending to the P2P network. Users register with a server by signing a cryptographic proof of identity. The server subscribes to their gossip topics and indexes their posts in SQLite with FTS5, exposing an HTTP API for search, trending hashtags, user directory, and aggregated feeds.
+
+The server is an overlay -- the P2P layer remains the foundation. Users who never connect to a server lose nothing.
+
+See [todos/community-server.md](todos/community-server.md) for the full design document and implementation roadmap.
+
+## Direct Messaging & Calls (Planned)
+
+End-to-end encrypted direct messaging and peer-to-peer voice/video calls. E2E encryption uses X25519 key exchange derived from each user's existing ed25519 identity, with a Double Ratchet protocol for forward secrecy. Messages are encrypted such that only the two participants can read them -- not relay servers, not community servers, not anyone.
+
+- DMs over a custom QUIC protocol (`iroh-social/dm/1`) with offline outbox and retry
+- Voice calls with Opus audio codec over multiplexed QUIC streams
+- Video calls with VP9 codec and adaptive bitrate
+- Call signaling is also E2E encrypted via the DM ratchet session
+
+See [todos/direct-messaging.md](todos/direct-messaging.md) for the full design document and implementation roadmap.
+
 ## Recommended IDE Setup
 
 [VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
