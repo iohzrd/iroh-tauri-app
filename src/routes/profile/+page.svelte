@@ -8,6 +8,13 @@
   let loading = $state(true);
   let saving = $state(false);
   let status = $state("");
+  let copyFeedback = $state(false);
+
+  async function copyNodeId() {
+    await navigator.clipboard.writeText(nodeId);
+    copyFeedback = true;
+    setTimeout(() => (copyFeedback = false), 1500);
+  }
 
   async function init() {
     try {
@@ -50,10 +57,9 @@
     <span class="label">Node ID</span>
     <div class="id-row">
       <code>{nodeId}</code>
-      <button
-        class="copy-btn"
-        onclick={() => navigator.clipboard.writeText(nodeId)}>Copy</button
-      >
+      <button class="copy-btn" onclick={copyNodeId}>
+        {copyFeedback ? "Copied!" : "Copy"}
+      </button>
     </div>
   </div>
 
@@ -126,6 +132,8 @@
     font-size: 0.75rem;
     cursor: pointer;
     white-space: nowrap;
+    min-width: 52px;
+    text-align: center;
   }
 
   .copy-btn:hover {
