@@ -30,6 +30,7 @@
   let lightboxAlt = $state("");
   let toastMessage = $state("");
   let toastType = $state<"error" | "success">("error");
+  let sentinel = $state<HTMLDivElement>(null!);
 
   const blobUrlCache = new Map<string, string>();
 
@@ -151,9 +152,29 @@
     }
   }
 
+  let scrollObserver: IntersectionObserver | null = null;
+
+  $effect(() => {
+    scrollObserver?.disconnect();
+    if (!sentinel) return;
+    scrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          loadMore();
+        }
+      },
+      { rootMargin: "0px 0px 200px 0px" },
+    );
+    scrollObserver.observe(sentinel);
+    return () => scrollObserver?.disconnect();
+  });
+
   onMount(() => {
     init();
-    return () => revokeAllBlobUrls();
+    return () => {
+      scrollObserver?.disconnect();
+      revokeAllBlobUrls();
+    };
   });
 </script>
 
@@ -262,13 +283,11 @@
   </div>
 
   {#if hasMore && posts.length > 0}
-    <button class="load-more" onclick={loadMore} disabled={loadingMore}>
+    <div bind:this={sentinel} class="sentinel">
       {#if loadingMore}
         <span class="btn-spinner"></span> Loading...
-      {:else}
-        Load more
       {/if}
-    </button>
+    </div>
   {/if}
 {/if}
 
@@ -535,30 +554,16 @@
     padding: 2rem;
   }
 
-  .load-more {
+  .sentinel {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
     width: 100%;
-    margin: 0.5rem 0;
-    background: #16213e;
+    min-height: 1px;
+    padding: 0.5rem 0;
     color: #c4b5fd;
-    border: 1px solid #2a2a4a;
-    border-radius: 6px;
-    padding: 0.6rem;
     font-size: 0.85rem;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .load-more:hover:not(:disabled) {
-    border-color: #a78bfa;
-  }
-
-  .load-more:disabled {
-    opacity: 0.7;
-    cursor: default;
   }
 
   .toast {
