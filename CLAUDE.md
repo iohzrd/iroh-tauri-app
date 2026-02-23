@@ -1,0 +1,14 @@
+# CLAUDE.md
+
+## Rules
+
+- Always thoroghly study all existing code relavant to your current task before offering changes.
+- **NEVER USE EMOJIS** in code, documentation, commits, anywhere
+- Always use latest dependency versions.
+- Always run code formatters after making changes (`cargo fmt` for backend, `npm run check` and `npx prettier --plugin prettier-plugin-svelte --write "src/**/*.{ts,svelte}" 2>&1` for frontend)
+- Always omit Claude signature when writing commit messages.
+
+## Commands
+
+- When the user says "review and commit", this means review ALL the uncommited changes with git diff, then commit.
+- When the user says "review and report", this means re-inspect ALL the code relevant to the current task and revise your list on current options.

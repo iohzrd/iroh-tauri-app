@@ -1,14 +1,15 @@
-use iroh::{
-    endpoint::Connection,
-    protocol::{AcceptError, ProtocolHandler, Router},
-    Endpoint,
-};
-use iroh_blobs::{
-    store::mem::MemStore,
-    ticket::BlobTicket,
-    BlobsProtocol, HashAndFormat,
-};
+mod gossip;
+mod storage;
+mod sync;
+
+use crate::gossip::FeedManager;
+use crate::storage::{FollowEntry, MediaAttachment, Post, Profile, Storage};
+use iroh::{Endpoint, SecretKey, protocol::Router};
+use iroh_blobs::{BlobsProtocol, HashAndFormat, store::mem::MemStore, ticket::BlobTicket};
+use iroh_gossip::Gossip;
+use rand::Rng;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Manager, State};
 use tokio::sync::Mutex;
 
@@ -17,19 +18,177 @@ pub struct AppState {
     pub router: Router,
     pub blobs: BlobsProtocol,
     pub store: MemStore,
+    pub storage: Arc<Storage>,
+    pub feed: FeedManager,
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+
+// -- Identity --
+
+#[tauri::command]
+async fn get_node_id(state: State<'_, Arc<Mutex<AppState>>>) -> Result<String, String> {
+    let state = state.lock().await;
+    Ok(state.endpoint.id().to_string())
+}
+
+// -- Profile --
+
+#[tauri::command]
+async fn get_my_profile(state: State<'_, Arc<Mutex<AppState>>>) -> Result<Option<Profile>, String> {
+    let state = state.lock().await;
+    state.storage.get_profile().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_node_info(state: State<'_, Arc<Mutex<AppState>>>) -> Result<serde_json::Value, String> {
+async fn save_my_profile(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    display_name: String,
+    bio: String,
+) -> Result<(), String> {
     let state = state.lock().await;
-    let id = state.endpoint.id();
-    let addr = state.endpoint.addr();
-
-    Ok(serde_json::json!({
-        "node_id": id.to_string(),
-        "addrs": format!("{:?}", addr),
-    }))
+    let profile = Profile {
+        display_name,
+        bio,
+        avatar_hash: None,
+    };
+    state
+        .storage
+        .save_profile(&profile)
+        .map_err(|e| e.to_string())
 }
+
+// -- Posts --
+
+#[tauri::command]
+async fn create_post(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    content: String,
+    media: Option<Vec<MediaAttachment>>,
+) -> Result<Post, String> {
+    let state = state.lock().await;
+    let author = state.endpoint.id().to_string();
+    let post = Post {
+        id: format!("{:016x}", rand::thread_rng().r#gen::<u64>()),
+        author,
+        content,
+        timestamp: now_millis(),
+        media: media.unwrap_or_default(),
+    };
+
+    state
+        .storage
+        .insert_post(&post)
+        .map_err(|e| e.to_string())?;
+    state
+        .feed
+        .broadcast_post(&post)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(post)
+}
+
+#[tauri::command]
+async fn get_feed(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    limit: Option<usize>,
+    before: Option<u64>,
+) -> Result<Vec<Post>, String> {
+    let state = state.lock().await;
+    state
+        .storage
+        .get_feed(limit.unwrap_or(50), before)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_user_posts(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    pubkey: String,
+    limit: Option<usize>,
+) -> Result<Vec<Post>, String> {
+    let state = state.lock().await;
+    state
+        .storage
+        .get_posts_by_author(&pubkey, limit.unwrap_or(50))
+        .map_err(|e| e.to_string())
+}
+
+// -- Sync (pull history from peers) --
+
+#[tauri::command]
+async fn sync_posts(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    pubkey: String,
+    before: Option<u64>,
+    limit: Option<u32>,
+) -> Result<Vec<Post>, String> {
+    let state = state.lock().await;
+    let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
+
+    let posts = sync::fetch_remote_posts(
+        &state.endpoint,
+        target,
+        &pubkey,
+        before,
+        limit.unwrap_or(20),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Store fetched posts locally
+    for post in &posts {
+        if let Err(e) = state.storage.insert_post(post) {
+            eprintln!("[sync] failed to store post: {e}");
+        }
+    }
+
+    Ok(posts)
+}
+
+// -- Follows --
+
+#[tauri::command]
+async fn follow_user(state: State<'_, Arc<Mutex<AppState>>>, pubkey: String) -> Result<(), String> {
+    let mut state = state.lock().await;
+    let entry = FollowEntry {
+        pubkey: pubkey.clone(),
+        alias: None,
+        followed_at: now_millis(),
+    };
+    state.storage.follow(&entry).map_err(|e| e.to_string())?;
+    state
+        .feed
+        .follow_user(pubkey)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn unfollow_user(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    pubkey: String,
+) -> Result<(), String> {
+    let mut state = state.lock().await;
+    state.storage.unfollow(&pubkey).map_err(|e| e.to_string())?;
+    state.feed.unfollow_user(&pubkey);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_follows(state: State<'_, Arc<Mutex<AppState>>>) -> Result<Vec<FollowEntry>, String> {
+    let state = state.lock().await;
+    state.storage.get_follows().map_err(|e| e.to_string())
+}
+
+// -- Blobs (media) --
 
 #[tauri::command]
 async fn add_blob(
@@ -57,17 +216,15 @@ async fn fetch_blob(
     state: State<'_, Arc<Mutex<AppState>>>,
     ticket: String,
 ) -> Result<String, String> {
-    let ticket: BlobTicket = ticket.parse().map_err(|e| format!("{e}") )?;
+    let ticket: BlobTicket = ticket.parse().map_err(|e| format!("{e}"))?;
     let state = state.lock().await;
 
-    // Connect to the remote node using the blobs ALPN
     let conn = state
         .endpoint
         .connect(ticket.addr().clone(), iroh_blobs::ALPN)
         .await
         .map_err(|e| e.to_string())?;
 
-    // Fetch the blob via the remote API
     let hash_and_format: HashAndFormat = ticket.hash_and_format();
     state
         .blobs
@@ -76,7 +233,6 @@ async fn fetch_blob(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Read the blob content from the local store
     let bytes = state
         .store
         .get_bytes(ticket.hash())
@@ -87,46 +243,76 @@ async fn fetch_blob(
 }
 
 #[tauri::command]
-async fn send_message(
+async fn add_blob_bytes(
     state: State<'_, Arc<Mutex<AppState>>>,
-    node_id: String,
-    message: String,
-) -> Result<String, String> {
+    data: Vec<u8>,
+) -> Result<serde_json::Value, String> {
     let state = state.lock().await;
-    let target: iroh::EndpointId = node_id
-        .parse()
-        .map_err(|e| format!("{e}"))?;
-    let addr = iroh::EndpointAddr::from(target);
-
-    let conn = state
-        .endpoint
-        .connect(addr, b"iroh-tauri/echo/1")
+    let tag = state
+        .store
+        .add_slice(&data)
         .await
         .map_err(|e| e.to_string())?;
 
-    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
-    send.write_all(message.as_bytes())
-        .await
-        .map_err(|e| e.to_string())?;
-    send.finish().map_err(|e| e.to_string())?;
+    let addr = state.endpoint.addr();
+    let ticket = BlobTicket::new(addr, tag.hash, tag.format);
 
-    let response = recv.read_to_end(65536).await.map_err(|e| e.to_string())?;
-    String::from_utf8(response.to_vec()).map_err(|e| e.to_string())
+    Ok(serde_json::json!({
+        "hash": tag.hash.to_string(),
+        "ticket": ticket.to_string(),
+    }))
 }
 
-#[derive(Debug, Clone)]
-struct EchoHandler;
+#[tauri::command]
+async fn fetch_blob_bytes(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    ticket: String,
+) -> Result<Vec<u8>, String> {
+    let ticket: BlobTicket = ticket.parse().map_err(|e| format!("{e}"))?;
+    let state = state.lock().await;
 
-impl ProtocolHandler for EchoHandler {
-    async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
-        let (mut send, mut recv) = conn.accept_bi().await?;
-        let data = recv.read_to_end(65536).await.map_err(AcceptError::from_err)?;
-        let msg = String::from_utf8_lossy(&data);
-        println!("[echo] received: {msg}");
-        let response = format!("echo: {msg}");
-        send.write_all(response.as_bytes()).await.map_err(AcceptError::from_err)?;
-        send.finish().map_err(AcceptError::from_err)?;
-        Ok(())
+    // Try local store first
+    if let Ok(bytes) = state.store.get_bytes(ticket.hash()).await {
+        return Ok(bytes.to_vec());
+    }
+
+    // Fetch from remote peer
+    let conn = state
+        .endpoint
+        .connect(ticket.addr().clone(), iroh_blobs::ALPN)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let hash_and_format: HashAndFormat = ticket.hash_and_format();
+    state
+        .blobs
+        .remote()
+        .fetch(conn, hash_and_format)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let bytes = state
+        .store
+        .get_bytes(ticket.hash())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(bytes.to_vec())
+}
+
+// -- Setup --
+
+fn load_or_create_key(path: &std::path::Path) -> SecretKey {
+    if path.exists() {
+        let bytes = std::fs::read(path).expect("failed to read identity key");
+        let bytes: [u8; 32] = bytes.try_into().expect("invalid key length");
+        SecretKey::from_bytes(&bytes)
+    } else {
+        let mut key_bytes = [0u8; 32];
+        getrandom::fill(&mut key_bytes).expect("failed to generate random key");
+        let key = SecretKey::from_bytes(&key_bytes);
+        std::fs::write(path, key.to_bytes()).expect("failed to write identity key");
+        key
     }
 }
 
@@ -136,31 +322,65 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
+
+            let data_dir = handle
+                .path()
+                .app_data_dir()
+                .expect("failed to resolve app data dir");
+            std::fs::create_dir_all(&data_dir).expect("failed to create app data dir");
+
+            let secret_key = load_or_create_key(&data_dir.join("identity.key"));
+            let db_path = data_dir.join("social.redb");
+            let storage = Arc::new(Storage::open(&db_path).expect("failed to open database"));
+
+            let follows = storage.get_follows().unwrap_or_default();
+
+            let storage_clone = storage.clone();
             tauri::async_runtime::spawn(async move {
                 let endpoint = Endpoint::builder()
+                    .secret_key(secret_key)
                     .alpns(vec![
-                        b"iroh-tauri/echo/1".to_vec(),
                         iroh_blobs::ALPN.to_vec(),
+                        iroh_gossip::ALPN.to_vec(),
+                        sync::SYNC_ALPN.to_vec(),
                     ])
                     .bind()
                     .await
                     .expect("failed to bind iroh endpoint");
 
-                println!("Iroh node ID: {}", endpoint.id());
+                println!("Node ID: {}", endpoint.id());
 
                 let store = MemStore::new();
                 let blobs = BlobsProtocol::new(store.as_ref(), None);
+                let gossip = Gossip::builder().spawn(endpoint.clone());
+
+                let sync_handler = sync::SyncHandler::new(storage_clone.clone());
 
                 let router = Router::builder(endpoint.clone())
-                    .accept(b"iroh-tauri/echo/1".to_vec(), Arc::new(EchoHandler))
                     .accept(iroh_blobs::ALPN.to_vec(), blobs.clone())
+                    .accept(iroh_gossip::ALPN.to_vec(), gossip.clone())
+                    .accept(sync::SYNC_ALPN.to_vec(), sync_handler)
                     .spawn();
+
+                let mut feed = FeedManager::new(gossip, endpoint.clone(), storage_clone.clone());
+
+                if let Err(e) = feed.start_own_feed().await {
+                    eprintln!("Failed to start own feed: {e}");
+                }
+
+                for f in &follows {
+                    if let Err(e) = feed.follow_user(f.pubkey.clone()).await {
+                        eprintln!("Failed to resubscribe to {}: {e}", f.pubkey);
+                    }
+                }
 
                 let state = Arc::new(Mutex::new(AppState {
                     endpoint,
                     router,
                     blobs,
                     store,
+                    storage: storage_clone,
+                    feed,
                 }));
 
                 handle.manage(state);
@@ -169,10 +389,20 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_node_info,
+            get_node_id,
+            get_my_profile,
+            save_my_profile,
+            create_post,
+            get_feed,
+            get_user_posts,
+            sync_posts,
+            follow_user,
+            unfollow_user,
+            get_follows,
             add_blob,
             fetch_blob,
-            send_message,
+            add_blob_bytes,
+            fetch_blob_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
