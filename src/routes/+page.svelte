@@ -226,6 +226,11 @@
     listen("feed-updated", () => {
       loadFeed();
     });
+    listen("profile-updated", (event) => {
+      const pubkey = event.payload as string;
+      displayNameCache.delete(pubkey);
+      loadFeed();
+    });
   });
 </script>
 

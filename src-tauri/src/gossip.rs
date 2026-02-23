@@ -181,6 +181,7 @@ impl FeedManager {
                                     if let Err(e) = storage.save_remote_profile(&pk, &profile) {
                                         eprintln!("[gossip-rx] failed to store profile: {e}");
                                     }
+                                    let _ = app_handle.emit("profile-updated", &pk);
                                 }
                                 Err(e) => {
                                     eprintln!("[gossip-rx] failed to parse message: {e}");

@@ -85,11 +85,15 @@ impl ProtocolHandler for SyncHandler {
             .map_err(AcceptError::from_err)?;
         send.finish().map_err(AcceptError::from_err)?;
 
-        // Keep the connection alive until the peer is done reading.
-        // Without this, dropping Connection sends ApplicationClose(error_code: 0)
-        // which kills the client's read_to_end before it completes.
-        // stopped() resolves when the peer finishes reading or the stream is reset.
-        let _ = send.stopped().await;
+        println!(
+            "[sync-server] sent response, waiting for peer to close connection {}",
+            &remote.to_string()[..8]
+        );
+
+        // Wait for the peer to close the connection.
+        // This is the canonical iroh pattern to prevent the Connection drop from
+        // sending ApplicationClose(error_code: 0) before the client reads all data.
+        conn.closed().await;
 
         println!(
             "[sync-server] completed sync for {}",

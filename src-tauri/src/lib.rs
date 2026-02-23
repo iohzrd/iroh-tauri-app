@@ -532,6 +532,12 @@ pub fn run() {
                         eprintln!("[startup-sync] no relay after 10s, attempting sync anyway");
                     }
 
+                    // Additional delay to let remote peers finish their own startup.
+                    // Without this, both peers race to sync and fail because the other
+                    // peer's Router hasn't started its accept loop yet.
+                    println!("[startup-sync] waiting 5s for peers to be ready...");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
                     for f in &sync_follows {
                         let target: iroh::EndpointId = match f.pubkey.parse() {
                             Ok(t) => t,
