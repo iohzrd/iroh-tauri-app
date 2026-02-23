@@ -60,6 +60,24 @@ async fn save_my_profile(
     state
         .storage
         .save_profile(&profile)
+        .map_err(|e| e.to_string())?;
+    state
+        .feed
+        .broadcast_profile(&profile)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_remote_profile(
+    state: State<'_, Arc<Mutex<AppState>>>,
+    pubkey: String,
+) -> Result<Option<Profile>, String> {
+    let state = state.lock().await;
+    state
+        .storage
+        .get_remote_profile(&pubkey)
         .map_err(|e| e.to_string())
 }
 
@@ -368,6 +386,12 @@ pub fn run() {
                     eprintln!("Failed to start own feed: {e}");
                 }
 
+                if let Ok(Some(profile)) = storage_clone.get_profile() {
+                    if let Err(e) = feed.broadcast_profile(&profile).await {
+                        eprintln!("Failed to broadcast profile on startup: {e}");
+                    }
+                }
+
                 for f in &follows {
                     if let Err(e) = feed.follow_user(f.pubkey.clone()).await {
                         eprintln!("Failed to resubscribe to {}: {e}", f.pubkey);
@@ -392,6 +416,7 @@ pub fn run() {
             get_node_id,
             get_my_profile,
             save_my_profile,
+            get_remote_profile,
             create_post,
             get_feed,
             get_user_posts,

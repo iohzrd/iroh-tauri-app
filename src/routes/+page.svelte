@@ -39,6 +39,29 @@
   // Cache for fetched blob URLs so we don't re-fetch
   const blobUrlCache = new Map<string, string>();
 
+  // Cache for remote display names
+  const displayNameCache = new Map<string, string>();
+
+  async function getDisplayName(pubkey: string): Promise<string> {
+    if (pubkey === nodeId) return "You";
+    const cached = displayNameCache.get(pubkey);
+    if (cached !== undefined) return cached;
+    try {
+      const profile: { display_name: string; bio: string } | null =
+        await invoke("get_remote_profile", { pubkey });
+      const name =
+        profile && profile.display_name
+          ? profile.display_name
+          : shortId(pubkey);
+      displayNameCache.set(pubkey, name);
+      return name;
+    } catch {
+      const name = shortId(pubkey);
+      displayNameCache.set(pubkey, name);
+      return name;
+    }
+  }
+
   async function init() {
     try {
       nodeId = await invoke("get_node_id");
@@ -249,7 +272,11 @@
       <article class="post">
         <div class="post-header">
           <span class="author" class:self={post.author === nodeId}>
-            {post.author === nodeId ? "You" : shortId(post.author)}
+            {#await getDisplayName(post.author)}
+              {post.author === nodeId ? "You" : shortId(post.author)}
+            {:then name}
+              {name}
+            {/await}
           </span>
           <span class="time">{timeAgo(post.timestamp)}</span>
         </div>

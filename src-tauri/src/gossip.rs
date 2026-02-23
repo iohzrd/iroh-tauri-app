@@ -1,4 +1,4 @@
-use crate::storage::{Post, Storage};
+use crate::storage::{Post, Profile, Storage};
 use bytes::Bytes;
 use futures_lite::StreamExt;
 use iroh::{Endpoint, EndpointId};
@@ -15,6 +15,7 @@ use tokio::task::JoinHandle;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GossipMessage {
     NewPost(Post),
+    ProfileUpdate(Profile),
 }
 
 pub fn user_feed_topic(pubkey: &str) -> TopicId {
@@ -54,6 +55,19 @@ impl FeedManager {
         Ok(())
     }
 
+    pub async fn broadcast_profile(&self, profile: &Profile) -> anyhow::Result<()> {
+        let sender = self
+            .my_sender
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("own feed not started"))?;
+
+        let msg = GossipMessage::ProfileUpdate(profile.clone());
+        let payload = serde_json::to_vec(&msg)?;
+        sender.broadcast(Bytes::from(payload)).await?;
+
+        Ok(())
+    }
+
     pub async fn broadcast_post(&self, post: &Post) -> anyhow::Result<()> {
         let sender = self
             .my_sender
@@ -86,13 +100,21 @@ impl FeedManager {
                 match receiver.try_next().await {
                     Ok(Some(event)) => {
                         if let Event::Received(msg) = event {
-                            if let Ok(GossipMessage::NewPost(post)) =
-                                serde_json::from_slice(&msg.content)
-                            {
-                                if post.author == pk {
-                                    if let Err(e) = storage.insert_post(&post) {
-                                        eprintln!("[gossip] failed to store post: {e}");
+                            match serde_json::from_slice(&msg.content) {
+                                Ok(GossipMessage::NewPost(post)) => {
+                                    if post.author == pk {
+                                        if let Err(e) = storage.insert_post(&post) {
+                                            eprintln!("[gossip] failed to store post: {e}");
+                                        }
                                     }
+                                }
+                                Ok(GossipMessage::ProfileUpdate(profile)) => {
+                                    if let Err(e) = storage.save_remote_profile(&pk, &profile) {
+                                        eprintln!("[gossip] failed to store profile: {e}");
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("[gossip] failed to parse message: {e}");
                                 }
                             }
                         }

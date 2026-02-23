@@ -46,6 +46,7 @@ pub struct FollowEntry {
 const PROFILE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("profile");
 const POSTS_TABLE: TableDefinition<(u64, &str), &[u8]> = TableDefinition::new("posts");
 const FOLLOWS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("follows");
+const REMOTE_PROFILES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("remote_profiles");
 
 #[derive(Debug)]
 pub struct Storage {
@@ -135,6 +136,30 @@ impl Storage {
                 Ok(posts)
             }
             Err(redb::TableError::TableDoesNotExist(_)) => Ok(vec![]),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    // -- Remote Profiles --
+
+    pub fn save_remote_profile(&self, pubkey: &str, profile: &Profile) -> anyhow::Result<()> {
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(REMOTE_PROFILES_TABLE)?;
+            table.insert(pubkey, to_bytes(profile).as_slice())?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
+    pub fn get_remote_profile(&self, pubkey: &str) -> anyhow::Result<Option<Profile>> {
+        let txn = self.db.begin_read()?;
+        match txn.open_table(REMOTE_PROFILES_TABLE) {
+            Ok(table) => match table.get(pubkey)? {
+                Some(guard) => Ok(Some(from_bytes(guard.value()))),
+                None => Ok(None),
+            },
+            Err(redb::TableError::TableDoesNotExist(_)) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }

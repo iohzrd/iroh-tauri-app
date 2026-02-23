@@ -27,7 +27,7 @@
   async function save() {
     saving = true;
     try {
-      await invoke("save_my_profile", { display_name: displayName, bio });
+      await invoke("save_my_profile", { displayName, bio });
       status = "Saved!";
       setTimeout(() => (status = ""), 2000);
     } catch (e) {

@@ -55,6 +55,23 @@
     }
   }
 
+  const displayNameCache = new Map<string, string>();
+
+  async function getDisplayName(pubkey: string): Promise<string | null> {
+    const cached = displayNameCache.get(pubkey);
+    if (cached !== undefined) return cached || null;
+    try {
+      const profile: { display_name: string; bio: string } | null =
+        await invoke("get_remote_profile", { pubkey });
+      const name = profile && profile.display_name ? profile.display_name : "";
+      displayNameCache.set(pubkey, name);
+      return name || null;
+    } catch {
+      displayNameCache.set(pubkey, "");
+      return null;
+    }
+  }
+
   function shortId(id: string) {
     return id.slice(0, 8) + "..." + id.slice(-4);
   }
@@ -93,7 +110,14 @@
     {#each follows as f (f.pubkey)}
       <div class="follow-item">
         <div class="follow-info">
-          <code>{shortId(f.pubkey)}</code>
+          <div class="follow-identity">
+            {#await getDisplayName(f.pubkey) then name}
+              {#if name}
+                <span class="display-name">{name}</span>
+              {/if}
+            {/await}
+            <code>{shortId(f.pubkey)}</code>
+          </div>
           <button
             class="copy-btn"
             onclick={() => navigator.clipboard.writeText(f.pubkey)}
@@ -177,6 +201,18 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  .follow-identity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .display-name {
+    font-weight: 600;
+    color: #c4b5fd;
+    font-size: 0.85rem;
   }
 
   code {
