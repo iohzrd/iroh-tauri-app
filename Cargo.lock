@@ -634,9 +634,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chrono"
-version = "0.4.43"
+version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fac4744fb15ae8337dc853fee7fb3f4e48c0fbaa23d0afe49c447b4fab126118"
+checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
 dependencies = [
  "iana-time-zone",
  "js-sys",
@@ -2863,6 +2863,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "iroh-social-types"
+version = "0.1.0"
+dependencies = [
+ "iroh-gossip",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "iroh-tauri-app"
 version = "0.1.0"
 dependencies = [
@@ -2873,11 +2883,11 @@ dependencies = [
  "iroh",
  "iroh-blobs",
  "iroh-gossip",
+ "iroh-social-types",
  "rand 0.8.5",
  "rusqlite",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
@@ -7742,9 +7752,9 @@ dependencies = [
 
 [[package]]
 name = "wmi"
-version = "0.18.2"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e49d9da833ef7c4419d8c3a18f0f7a8eca8ccc85f7ab8f359281c24100251211"
+checksum = "003e65f4934cf9449b9ce913ad822cd054a5af669d24f93db101fdb02856bb23"
 dependencies = [
  "chrono",
  "futures",

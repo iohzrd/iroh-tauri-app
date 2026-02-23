@@ -3,14 +3,17 @@ mod storage;
 mod sync;
 
 use crate::gossip::FeedManager;
-use crate::storage::{FollowEntry, FollowerEntry, MediaAttachment, Post, Profile, Storage};
+use crate::storage::Storage;
 use iroh::{Endpoint, SecretKey, protocol::Router};
 use iroh_blobs::{BlobsProtocol, HashAndFormat, store::fs::FsStore, ticket::BlobTicket};
 use iroh_gossip::Gossip;
+use iroh_social_types::{
+    FollowEntry, FollowerEntry, MAX_BLOB_SIZE, MediaAttachment, Post, Profile, now_millis,
+    validate_post,
+};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 
@@ -21,43 +24,6 @@ pub struct AppState {
     pub store: FsStore,
     pub storage: Arc<Storage>,
     pub feed: Arc<Mutex<FeedManager>>,
-}
-
-const MAX_POST_CONTENT_LEN: usize = 10_000;
-const MAX_MEDIA_COUNT: usize = 10;
-const MAX_TIMESTAMP_DRIFT_MS: u64 = 5 * 60 * 1000;
-const MAX_BLOB_SIZE: usize = 50 * 1024 * 1024;
-
-fn now_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
-}
-
-pub(crate) fn validate_post(post: &Post) -> Result<(), String> {
-    if post.content.len() > MAX_POST_CONTENT_LEN {
-        return Err(format!(
-            "post content too long: {} bytes (max {})",
-            post.content.len(),
-            MAX_POST_CONTENT_LEN
-        ));
-    }
-    if post.media.len() > MAX_MEDIA_COUNT {
-        return Err(format!(
-            "too many media attachments: {} (max {})",
-            post.media.len(),
-            MAX_MEDIA_COUNT
-        ));
-    }
-    let now = now_millis();
-    if post.timestamp > now + MAX_TIMESTAMP_DRIFT_MS {
-        return Err(format!(
-            "post timestamp {} is too far in the future (now: {})",
-            post.timestamp, now
-        ));
-    }
-    Ok(())
 }
 
 // -- Identity --

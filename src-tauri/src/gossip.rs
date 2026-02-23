@@ -1,31 +1,16 @@
-use crate::storage::{Post, Profile, Storage};
+use crate::storage::Storage;
 use bytes::Bytes;
 use futures_lite::StreamExt;
 use iroh::{Endpoint, EndpointId};
 use iroh_gossip::{
-    Gossip, TopicId,
+    Gossip,
     api::{Event, GossipSender},
 };
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use iroh_social_types::{GossipMessage, Post, Profile, now_millis, user_feed_topic, validate_post};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::task::JoinHandle;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum GossipMessage {
-    NewPost(Post),
-    DeletePost { id: String, author: String },
-    ProfileUpdate(Profile),
-}
-
-pub fn user_feed_topic(pubkey: &str) -> TopicId {
-    let mut hasher = Sha256::new();
-    hasher.update(b"iroh-social-feed-v1:");
-    hasher.update(pubkey.as_bytes());
-    TopicId::from_bytes(hasher.finalize().into())
-}
 
 pub struct FeedManager {
     pub gossip: Gossip,
@@ -74,7 +59,7 @@ impl FeedManager {
                         Event::NeighborUp(endpoint_id) => {
                             let pubkey = endpoint_id.to_string();
                             println!("[gossip-own] new follower: {}", &pubkey[..8]);
-                            let now = crate::now_millis();
+                            let now = now_millis();
                             match storage.upsert_follower(&pubkey, now) {
                                 Ok(is_new) => {
                                     let _ = app_handle.emit("follower-changed", &pubkey);
@@ -194,7 +179,7 @@ impl FeedManager {
                             match serde_json::from_slice(&msg.content) {
                                 Ok(GossipMessage::NewPost(post)) => {
                                     if post.author == pk {
-                                        if let Err(reason) = crate::validate_post(&post) {
+                                        if let Err(reason) = validate_post(&post) {
                                             eprintln!(
                                                 "[gossip-rx] rejected post {} from {}: {reason}",
                                                 &post.id,

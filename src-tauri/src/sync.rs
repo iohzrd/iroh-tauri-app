@@ -1,27 +1,13 @@
-use crate::storage::{Post, Profile, Storage};
+use crate::storage::Storage;
 use iroh::{
     Endpoint, EndpointAddr, EndpointId,
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
 };
-use serde::{Deserialize, Serialize};
+use iroh_social_types::{Post, Profile, SyncRequest, SyncResponse};
 use std::sync::Arc;
 
-pub const SYNC_ALPN: &[u8] = b"iroh-social/sync/1";
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SyncRequest {
-    pub author: String,
-    pub before: Option<u64>,
-    pub limit: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SyncResponse {
-    pub posts: Vec<Post>,
-    #[serde(default)]
-    pub profile: Option<Profile>,
-}
+pub use iroh_social_types::SYNC_ALPN;
 
 #[derive(Debug, Clone)]
 pub struct SyncHandler {
