@@ -6,6 +6,7 @@
 - **NEVER USE EMOJIS** in code, documentation, commits, anywhere
 - Always use latest dependency versions.
 - Always run code formatters after making changes (`cargo fmt` for backend, `npm run check` and `npx prettier --plugin prettier-plugin-svelte --write "src/**/*.{ts,svelte}" 2>&1` for frontend)
+- Always run `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` before committing and fix any warnings.
 - Always omit Claude signature when writing commit messages.
 
 ## Commands
