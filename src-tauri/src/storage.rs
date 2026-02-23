@@ -118,6 +118,30 @@ impl Storage {
         }
     }
 
+    pub fn delete_post(&self, id: &str) -> anyhow::Result<bool> {
+        let txn = self.db.begin_write()?;
+        let removed = {
+            let mut table = txn.open_table(POSTS_TABLE)?;
+            let mut key_to_remove = None;
+            for entry in table.range((0u64, "")..=(u64::MAX, "\u{10FFFF}"))? {
+                let (k, _v) = entry?;
+                let (ts, entry_id) = k.value();
+                if entry_id == id {
+                    key_to_remove = Some((ts, id.to_string()));
+                    break;
+                }
+            }
+            if let Some((ts, eid)) = &key_to_remove {
+                table.remove((*ts, eid.as_str()))?;
+                true
+            } else {
+                false
+            }
+        };
+        txn.commit()?;
+        Ok(removed)
+    }
+
     pub fn get_posts_by_author(&self, author: &str, limit: usize) -> anyhow::Result<Vec<Post>> {
         let txn = self.db.begin_read()?;
         match txn.open_table(POSTS_TABLE) {

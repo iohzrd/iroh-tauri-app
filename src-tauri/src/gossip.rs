@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GossipMessage {
     NewPost(Post),
+    DeletePost { id: String, author: String },
     ProfileUpdate(Profile),
 }
 
@@ -55,6 +56,7 @@ impl FeedManager {
     pub async fn start_own_feed(&mut self) -> anyhow::Result<()> {
         let my_id = self.endpoint.id().to_string();
         let topic = user_feed_topic(&my_id);
+        println!("[gossip] starting own feed topic for {}", &my_id[..8]);
 
         let topic_handle = self.gossip.subscribe(topic, vec![]).await?;
         let (sender, _receiver) = topic_handle.split();
@@ -72,6 +74,7 @@ impl FeedManager {
         let msg = GossipMessage::ProfileUpdate(profile.clone());
         let payload = serde_json::to_vec(&msg)?;
         sender.broadcast(Bytes::from(payload)).await?;
+        println!("[gossip] broadcast profile: {}", profile.display_name);
 
         Ok(())
     }
@@ -85,57 +88,120 @@ impl FeedManager {
         let msg = GossipMessage::NewPost(post.clone());
         let payload = serde_json::to_vec(&msg)?;
         sender.broadcast(Bytes::from(payload)).await?;
+        println!("[gossip] broadcast post {}", &post.id);
+
+        Ok(())
+    }
+
+    pub async fn broadcast_delete(&self, id: &str, author: &str) -> anyhow::Result<()> {
+        let sender = self
+            .my_sender
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("own feed not started"))?;
+
+        let msg = GossipMessage::DeletePost {
+            id: id.to_string(),
+            author: author.to_string(),
+        };
+        let payload = serde_json::to_vec(&msg)?;
+        sender.broadcast(Bytes::from(payload)).await?;
+        println!("[gossip] broadcast delete {id}");
 
         Ok(())
     }
 
     pub async fn follow_user(&mut self, pubkey: String) -> anyhow::Result<()> {
         if self.subscriptions.contains_key(&pubkey) {
+            println!("[gossip] already subscribed to {}", &pubkey[..8]);
             return Ok(());
         }
 
         let topic = user_feed_topic(&pubkey);
         let bootstrap: EndpointId = pubkey.parse().map_err(|e| anyhow::anyhow!("{e}"))?;
 
+        println!(
+            "[gossip] subscribing to {} (topic: {})",
+            &pubkey[..8],
+            &format!("{:?}", topic)[..12]
+        );
         let topic_handle = self.gossip.subscribe(topic, vec![bootstrap]).await?;
         let (sender, receiver) = topic_handle.split();
+        println!("[gossip] subscribed to {}", &pubkey[..8]);
 
         let storage = self.storage.clone();
         let pk = pubkey.clone();
         let app_handle = self.app_handle.clone();
         let handle = tokio::spawn(async move {
+            println!("[gossip-rx] listener started for {}", &pk[..8]);
             let mut receiver = receiver;
             loop {
                 match receiver.try_next().await {
-                    Ok(Some(event)) => {
-                        if let Event::Received(msg) = event {
+                    Ok(Some(event)) => match &event {
+                        Event::Received(msg) => {
+                            println!(
+                                "[gossip-rx] received {} bytes from {}",
+                                msg.content.len(),
+                                &pk[..8]
+                            );
                             match serde_json::from_slice(&msg.content) {
                                 Ok(GossipMessage::NewPost(post)) => {
                                     if post.author == pk {
+                                        println!(
+                                            "[gossip-rx] new post {} from {}",
+                                            &post.id,
+                                            &pk[..8]
+                                        );
                                         if let Err(e) = storage.insert_post(&post) {
-                                            eprintln!("[gossip] failed to store post: {e}");
+                                            eprintln!("[gossip-rx] failed to store post: {e}");
+                                        }
+                                        let _ = app_handle.emit("feed-updated", ());
+                                    } else {
+                                        println!(
+                                            "[gossip-rx] ignored post from {} (expected {})",
+                                            &post.author[..8],
+                                            &pk[..8]
+                                        );
+                                    }
+                                }
+                                Ok(GossipMessage::DeletePost { id, author }) => {
+                                    if author == pk {
+                                        println!("[gossip-rx] delete post {id} from {}", &pk[..8]);
+                                        if let Err(e) = storage.delete_post(&id) {
+                                            eprintln!("[gossip-rx] failed to delete post: {e}");
                                         }
                                         let _ = app_handle.emit("feed-updated", ());
                                     }
                                 }
                                 Ok(GossipMessage::ProfileUpdate(profile)) => {
+                                    println!(
+                                        "[gossip-rx] profile update from {}: {}",
+                                        &pk[..8],
+                                        profile.display_name
+                                    );
                                     if let Err(e) = storage.save_remote_profile(&pk, &profile) {
-                                        eprintln!("[gossip] failed to store profile: {e}");
+                                        eprintln!("[gossip-rx] failed to store profile: {e}");
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("[gossip] failed to parse message: {e}");
+                                    eprintln!("[gossip-rx] failed to parse message: {e}");
                                 }
                             }
                         }
+                        other => {
+                            println!("[gossip-rx] event from {}: {other:?}", &pk[..8]);
+                        }
+                    },
+                    Ok(None) => {
+                        println!("[gossip-rx] stream ended for {}", &pk[..8]);
+                        break;
                     }
-                    Ok(None) => break,
                     Err(e) => {
-                        eprintln!("[gossip] receiver error: {e}");
+                        eprintln!("[gossip-rx] receiver error for {}: {e}", &pk[..8]);
                         break;
                     }
                 }
             }
+            println!("[gossip-rx] listener stopped for {}", &pk[..8]);
         });
 
         self.subscriptions.insert(pubkey, (sender, handle));
@@ -144,6 +210,7 @@ impl FeedManager {
 
     pub fn unfollow_user(&mut self, pubkey: &str) {
         if let Some((_sender, handle)) = self.subscriptions.remove(pubkey) {
+            println!("[gossip] unsubscribed from {}", &pubkey[..8]);
             handle.abort();
         }
     }

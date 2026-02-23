@@ -10,7 +10,7 @@ use iroh_gossip::Gossip;
 use rand::Rng;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tokio::sync::Mutex;
 
 pub struct AppState {
@@ -53,19 +53,21 @@ async fn save_my_profile(
 ) -> Result<(), String> {
     let state = state.lock().await;
     let profile = Profile {
-        display_name,
-        bio,
+        display_name: display_name.clone(),
+        bio: bio.clone(),
         avatar_hash: None,
     };
     state
         .storage
         .save_profile(&profile)
         .map_err(|e| e.to_string())?;
+    println!("[profile] saved profile: {display_name}");
     state
         .feed
         .broadcast_profile(&profile)
         .await
         .map_err(|e| e.to_string())?;
+    println!("[profile] broadcast profile update");
     Ok(())
 }
 
@@ -91,6 +93,7 @@ async fn create_post(
 ) -> Result<Post, String> {
     let state = state.lock().await;
     let author = state.endpoint.id().to_string();
+    let media_count = media.as_ref().map_or(0, |m| m.len());
     let post = Post {
         id: format!("{:016x}", rand::thread_rng().r#gen::<u64>()),
         author,
@@ -103,13 +106,35 @@ async fn create_post(
         .storage
         .insert_post(&post)
         .map_err(|e| e.to_string())?;
+    println!(
+        "[post] created post {} ({} media attachments)",
+        &post.id, media_count
+    );
     state
         .feed
         .broadcast_post(&post)
         .await
         .map_err(|e| e.to_string())?;
+    println!("[post] broadcast post {}", &post.id);
 
     Ok(post)
+}
+
+#[tauri::command]
+async fn delete_post(state: State<'_, Arc<Mutex<AppState>>>, id: String) -> Result<(), String> {
+    let state = state.lock().await;
+    let my_id = state.endpoint.id().to_string();
+
+    let removed = state.storage.delete_post(&id).map_err(|e| e.to_string())?;
+    println!("[post] delete post {id}: removed={removed}");
+    state
+        .feed
+        .broadcast_delete(&id, &my_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    println!("[post] broadcast delete {id}");
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -119,10 +144,12 @@ async fn get_feed(
     before: Option<u64>,
 ) -> Result<Vec<Post>, String> {
     let state = state.lock().await;
-    state
+    let posts = state
         .storage
         .get_feed(limit.unwrap_or(50), before)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    println!("[feed] loaded {} posts", posts.len());
+    Ok(posts)
 }
 
 #[tauri::command]
@@ -150,6 +177,7 @@ async fn sync_posts(
     let state = state.lock().await;
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
 
+    println!("[sync] requesting posts from {}...", &pubkey[..8]);
     let posts = sync::fetch_remote_posts(
         &state.endpoint,
         target,
@@ -159,6 +187,12 @@ async fn sync_posts(
     )
     .await
     .map_err(|e| e.to_string())?;
+
+    println!(
+        "[sync] received {} posts from {}",
+        posts.len(),
+        &pubkey[..8]
+    );
 
     // Store fetched posts locally
     for post in &posts {
@@ -175,6 +209,7 @@ async fn sync_posts(
 #[tauri::command]
 async fn follow_user(state: State<'_, Arc<Mutex<AppState>>>, pubkey: String) -> Result<(), String> {
     let mut state = state.lock().await;
+    println!("[follow] following {}...", &pubkey[..8]);
     let entry = FollowEntry {
         pubkey: pubkey.clone(),
         alias: None,
@@ -186,8 +221,10 @@ async fn follow_user(state: State<'_, Arc<Mutex<AppState>>>, pubkey: String) -> 
         .follow_user(pubkey.clone())
         .await
         .map_err(|e| e.to_string())?;
+    println!("[follow] subscribed to gossip for {}", &pubkey[..8]);
 
     // Sync existing posts from the followed user
+    println!("[follow] syncing posts from {}...", &pubkey[..8]);
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
     match sync::fetch_remote_posts(&state.endpoint, target, &pubkey, None, 50).await {
         Ok(posts) => {
@@ -216,8 +253,10 @@ async fn unfollow_user(
     pubkey: String,
 ) -> Result<(), String> {
     let mut state = state.lock().await;
+    println!("[follow] unfollowing {}...", &pubkey[..8]);
     state.storage.unfollow(&pubkey).map_err(|e| e.to_string())?;
     state.feed.unfollow_user(&pubkey);
+    println!("[follow] unfollowed {}", &pubkey[..8]);
     Ok(())
 }
 
@@ -243,6 +282,7 @@ async fn add_blob(
 
     let addr = state.endpoint.addr();
     let ticket = BlobTicket::new(addr, tag.hash, tag.format);
+    println!("[blob] added text blob {}", tag.hash);
 
     Ok(serde_json::json!({
         "hash": tag.hash.to_string(),
@@ -258,6 +298,7 @@ async fn fetch_blob(
     let ticket: BlobTicket = ticket.parse().map_err(|e| format!("{e}"))?;
     let state = state.lock().await;
 
+    println!("[blob] fetching text blob {}...", ticket.hash());
     let conn = state
         .endpoint
         .connect(ticket.addr().clone(), iroh_blobs::ALPN)
@@ -278,6 +319,11 @@ async fn fetch_blob(
         .await
         .map_err(|e| e.to_string())?;
 
+    println!(
+        "[blob] fetched text blob {} ({} bytes)",
+        ticket.hash(),
+        bytes.len()
+    );
     String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())
 }
 
@@ -287,6 +333,7 @@ async fn add_blob_bytes(
     data: Vec<u8>,
 ) -> Result<serde_json::Value, String> {
     let state = state.lock().await;
+    let size = data.len();
     let tag = state
         .store
         .add_slice(&data)
@@ -295,6 +342,7 @@ async fn add_blob_bytes(
 
     let addr = state.endpoint.addr();
     let ticket = BlobTicket::new(addr, tag.hash, tag.format);
+    println!("[blob] added blob {} ({size} bytes)", tag.hash);
 
     Ok(serde_json::json!({
         "hash": tag.hash.to_string(),
@@ -312,10 +360,16 @@ async fn fetch_blob_bytes(
 
     // Try local store first
     if let Ok(bytes) = state.store.get_bytes(ticket.hash()).await {
+        println!(
+            "[blob] found {} locally ({} bytes)",
+            ticket.hash(),
+            bytes.len()
+        );
         return Ok(bytes.to_vec());
     }
 
     // Fetch from remote peer
+    println!("[blob] fetching {} from remote...", ticket.hash());
     let conn = state
         .endpoint
         .connect(ticket.addr().clone(), iroh_blobs::ALPN)
@@ -336,6 +390,11 @@ async fn fetch_blob_bytes(
         .await
         .map_err(|e| e.to_string())?;
 
+    println!(
+        "[blob] fetched {} from remote ({} bytes)",
+        ticket.hash(),
+        bytes.len()
+    );
     Ok(bytes.to_vec())
 }
 
@@ -367,15 +426,19 @@ pub fn run() {
                 .app_data_dir()
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(&data_dir).expect("failed to create app data dir");
+            println!("[setup] data dir: {}", data_dir.display());
 
             let secret_key = load_or_create_key(&data_dir.join("identity.key"));
             let db_path = data_dir.join("social.redb");
             let storage = Arc::new(Storage::open(&db_path).expect("failed to open database"));
+            println!("[setup] database opened");
 
             let follows = storage.get_follows().unwrap_or_default();
+            println!("[setup] loaded {} follows", follows.len());
 
             let storage_clone = storage.clone();
             tauri::async_runtime::spawn(async move {
+                println!("[setup] binding iroh endpoint...");
                 let endpoint = Endpoint::builder()
                     .secret_key(secret_key)
                     .alpns(vec![
@@ -387,14 +450,25 @@ pub fn run() {
                     .await
                     .expect("failed to bind iroh endpoint");
 
-                println!("Node ID: {}", endpoint.id());
+                println!("[setup] Node ID: {}", endpoint.id());
+                println!("[setup] addr (immediate): {:?}", endpoint.addr());
+
+                // Log relay address after it has time to connect
+                let ep_clone = endpoint.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    println!("[setup] addr (after 3s): {:?}", ep_clone.addr());
+                });
 
                 let blobs_dir = data_dir.join("blobs");
                 let store = FsStore::load(&blobs_dir)
                     .await
                     .expect("failed to open blob store");
+                println!("[setup] blob store opened at {}", blobs_dir.display());
+
                 let blobs = BlobsProtocol::new(&store, None);
                 let gossip = Gossip::builder().spawn(endpoint.clone());
+                println!("[setup] gossip started");
 
                 let sync_handler = sync::SyncHandler::new(storage_clone.clone());
 
@@ -403,6 +477,7 @@ pub fn run() {
                     .accept(iroh_gossip::ALPN.to_vec(), gossip.clone())
                     .accept(sync::SYNC_ALPN.to_vec(), sync_handler)
                     .spawn();
+                println!("[setup] router spawned");
 
                 let mut feed = FeedManager::new(
                     gossip,
@@ -412,52 +487,119 @@ pub fn run() {
                 );
 
                 if let Err(e) = feed.start_own_feed().await {
-                    eprintln!("Failed to start own feed: {e}");
+                    eprintln!("[setup] failed to start own feed: {e}");
+                } else {
+                    println!("[setup] own gossip feed started");
                 }
 
                 if let Ok(Some(profile)) = storage_clone.get_profile() {
                     if let Err(e) = feed.broadcast_profile(&profile).await {
-                        eprintln!("Failed to broadcast profile on startup: {e}");
+                        eprintln!("[setup] failed to broadcast profile: {e}");
+                    } else {
+                        println!("[setup] broadcast profile: {}", profile.display_name);
                     }
                 }
 
                 for f in &follows {
+                    println!("[setup] resubscribing to {}...", &f.pubkey[..8]);
                     if let Err(e) = feed.follow_user(f.pubkey.clone()).await {
-                        eprintln!("Failed to resubscribe to {}: {e}", f.pubkey);
+                        eprintln!("[setup] failed to resubscribe to {}: {e}", &f.pubkey[..8]);
+                    } else {
+                        println!("[setup] resubscribed to {}", &f.pubkey[..8]);
                     }
                 }
 
                 // Sync historical posts from followed users in the background
+                // Wait for relay connectivity first, then retry on failure
                 let sync_endpoint = endpoint.clone();
                 let sync_storage = storage_clone.clone();
                 let sync_follows = follows.clone();
+                let sync_handle = handle.clone();
                 tokio::spawn(async move {
+                    // Wait for relay to connect before attempting sync
+                    println!("[startup-sync] waiting for relay connectivity...");
+                    let mut has_relay = false;
+                    for i in 0..10 {
+                        let addr = sync_endpoint.addr();
+                        if addr.relay_urls().next().is_some() {
+                            println!("[startup-sync] relay connected after {}s", i);
+                            has_relay = true;
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                    if !has_relay {
+                        eprintln!("[startup-sync] no relay after 10s, attempting sync anyway");
+                    }
+
                     for f in &sync_follows {
                         let target: iroh::EndpointId = match f.pubkey.parse() {
                             Ok(t) => t,
                             Err(_) => continue,
                         };
-                        match sync::fetch_remote_posts(&sync_endpoint, target, &f.pubkey, None, 50)
-                            .await
-                        {
-                            Ok(posts) => {
-                                for post in &posts {
-                                    let _ = sync_storage.insert_post(post);
+
+                        // Try up to 3 times with increasing delay
+                        for attempt in 1..=3 {
+                            println!(
+                                "[startup-sync] syncing from {} (attempt {}/3)...",
+                                &f.pubkey[..8],
+                                attempt
+                            );
+                            let start = std::time::Instant::now();
+                            let result = tokio::time::timeout(
+                                std::time::Duration::from_secs(15),
+                                sync::fetch_remote_posts(
+                                    &sync_endpoint,
+                                    target,
+                                    &f.pubkey,
+                                    None,
+                                    50,
+                                ),
+                            )
+                            .await;
+                            let elapsed = start.elapsed();
+                            match result {
+                                Ok(Ok(posts)) => {
+                                    for post in &posts {
+                                        let _ = sync_storage.insert_post(post);
+                                    }
+                                    if !posts.is_empty() {
+                                        let _ = sync_handle.emit("feed-updated", ());
+                                    }
+                                    println!(
+                                        "[startup-sync] synced {} posts from {} in {:.1}s",
+                                        posts.len(),
+                                        &f.pubkey[..8],
+                                        elapsed.as_secs_f64()
+                                    );
+                                    break; // Success, move to next follow
                                 }
-                                println!(
-                                    "[startup-sync] synced {} posts from {}",
-                                    posts.len(),
-                                    &f.pubkey[..8]
-                                );
+                                Ok(Err(e)) => {
+                                    eprintln!(
+                                        "[startup-sync] attempt {attempt} failed for {} after {:.1}s: {e:?}",
+                                        &f.pubkey[..8],
+                                        elapsed.as_secs_f64()
+                                    );
+                                }
+                                Err(_) => {
+                                    eprintln!(
+                                        "[startup-sync] attempt {attempt} timed out for {} after {:.1}s",
+                                        &f.pubkey[..8],
+                                        elapsed.as_secs_f64()
+                                    );
+                                }
                             }
-                            Err(e) => {
-                                eprintln!(
-                                    "[startup-sync] failed to sync from {}: {e}",
+                            if attempt < 3 {
+                                let delay = attempt as u64 * 5;
+                                println!(
+                                    "[startup-sync] retrying {} in {delay}s...",
                                     &f.pubkey[..8]
                                 );
+                                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                             }
                         }
                     }
+                    println!("[startup-sync] done");
                 });
 
                 let state = Arc::new(Mutex::new(AppState {
@@ -470,6 +612,7 @@ pub fn run() {
                 }));
 
                 handle.manage(state);
+                println!("[setup] app state ready");
             });
 
             Ok(())
@@ -480,6 +623,7 @@ pub fn run() {
             save_my_profile,
             get_remote_profile,
             create_post,
+            delete_post,
             get_feed,
             get_user_posts,
             sync_posts,

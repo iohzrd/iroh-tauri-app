@@ -34,6 +34,12 @@ impl SyncHandler {
 
 impl ProtocolHandler for SyncHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        let remote = conn.remote_id();
+        println!(
+            "[sync-server] incoming sync request from {}",
+            &remote.to_string()[..8]
+        );
+
         let (mut send, mut recv) = conn.accept_bi().await?;
 
         let req_bytes = recv
@@ -42,6 +48,12 @@ impl ProtocolHandler for SyncHandler {
             .map_err(AcceptError::from_err)?;
 
         let req: SyncRequest = serde_json::from_slice(&req_bytes).map_err(AcceptError::from_err)?;
+        println!(
+            "[sync-server] request: author={}, before={:?}, limit={}",
+            &req.author[..8],
+            req.before,
+            req.limit
+        );
 
         let posts = self
             .storage
@@ -58,6 +70,12 @@ impl ProtocolHandler for SyncHandler {
             Some(before) => posts.into_iter().filter(|p| p.timestamp < before).collect(),
             None => posts,
         };
+
+        println!(
+            "[sync-server] responding with {} posts to {}",
+            posts.len(),
+            &remote.to_string()[..8]
+        );
 
         let resp = SyncResponse { posts };
         let resp_bytes = serde_json::to_vec(&resp).map_err(AcceptError::from_err)?;
@@ -80,9 +98,35 @@ pub async fn fetch_remote_posts(
     limit: u32,
 ) -> anyhow::Result<Vec<Post>> {
     let addr = EndpointAddr::from(target);
-    let conn = endpoint.connect(addr, SYNC_ALPN).await?;
+    println!("[sync-client] connecting to {} for posts...", &author[..8]);
+    let start = std::time::Instant::now();
+    let conn = match endpoint.connect(addr, SYNC_ALPN).await {
+        Ok(c) => {
+            println!(
+                "[sync-client] connected to {} in {:.1}s (remote: {})",
+                &author[..8],
+                start.elapsed().as_secs_f64(),
+                c.remote_id()
+            );
+            c
+        }
+        Err(e) => {
+            eprintln!(
+                "[sync-client] failed to connect to {} after {:.1}s: {e:?}",
+                &author[..8],
+                start.elapsed().as_secs_f64()
+            );
+            return Err(e.into());
+        }
+    };
 
-    let (mut send, mut recv) = conn.open_bi().await?;
+    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| {
+        eprintln!(
+            "[sync-client] failed to open bi-stream to {}: {e:?}",
+            &author[..8]
+        );
+        e
+    })?;
 
     let req = SyncRequest {
         author: author.to_string(),
@@ -94,8 +138,21 @@ pub async fn fetch_remote_posts(
     send.write_all(&req_bytes).await?;
     send.finish()?;
 
-    let resp_bytes = recv.read_to_end(1_048_576).await?; // 1MB max
+    let resp_bytes = recv.read_to_end(1_048_576).await.map_err(|e| {
+        eprintln!(
+            "[sync-client] failed to read response from {}: {e:?}",
+            &author[..8]
+        );
+        e
+    })?; // 1MB max
     let resp: SyncResponse = serde_json::from_slice(&resp_bytes)?;
+
+    println!(
+        "[sync-client] received {} posts from {} in {:.1}s",
+        resp.posts.len(),
+        &author[..8],
+        start.elapsed().as_secs_f64()
+    );
 
     Ok(resp.posts)
 }

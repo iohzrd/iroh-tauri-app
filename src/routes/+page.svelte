@@ -164,6 +164,15 @@
     posting = false;
   }
 
+  async function deletePost(id: string) {
+    try {
+      await invoke("delete_post", { id });
+      await loadFeed();
+    } catch (e) {
+      console.error("Failed to delete post:", e);
+    }
+  }
+
   async function getBlobUrl(attachment: MediaAttachment): Promise<string> {
     const cached = blobUrlCache.get(attachment.hash);
     if (cached) return cached;
@@ -296,7 +305,14 @@
               {name}
             {/await}
           </span>
-          <span class="time">{timeAgo(post.timestamp)}</span>
+          <div class="post-header-right">
+            <span class="time">{timeAgo(post.timestamp)}</span>
+            {#if post.author === nodeId}
+              <button class="delete-btn" onclick={() => deletePost(post.id)}>
+                &times;
+              </button>
+            {/if}
+          </div>
         </div>
         {#if post.content}
           <p class="post-content">{post.content}</p>
@@ -518,7 +534,28 @@
   .post-header {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 0.5rem;
+  }
+
+  .post-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0 0.25rem;
+    line-height: 1;
+  }
+
+  .delete-btn:hover {
+    color: #ef4444;
   }
 
   .author {
