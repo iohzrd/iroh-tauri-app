@@ -60,12 +60,7 @@ impl ProtocolHandler for SyncHandler {
         let posts = self
             .storage
             .get_posts_by_author(&req.author, req.limit as usize, req.before)
-            .map_err(|e| {
-                AcceptError::from_err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| AcceptError::from_err(std::io::Error::other(e.to_string())))?;
 
         // Include our own profile in the response
         let profile = self.storage.get_profile().ok().flatten();

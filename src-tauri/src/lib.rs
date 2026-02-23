@@ -238,10 +238,10 @@ async fn sync_posts(
             eprintln!("[sync] failed to store post: {e}");
         }
     }
-    if let Some(profile) = &profile {
-        if let Err(e) = storage.save_remote_profile(&pubkey, profile) {
-            eprintln!("[sync] failed to store profile: {e}");
-        }
+    if let Some(profile) = &profile
+        && let Err(e) = storage.save_remote_profile(&pubkey, profile)
+    {
+        eprintln!("[sync] failed to store profile: {e}");
     }
 
     Ok(posts)
@@ -283,10 +283,10 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
                     eprintln!("[follow-sync] failed to store post: {e}");
                 }
             }
-            if let Some(profile) = &profile {
-                if let Err(e) = storage.save_remote_profile(&pubkey, profile) {
-                    eprintln!("[follow-sync] failed to store profile: {e}");
-                }
+            if let Some(profile) = &profile
+                && let Err(e) = storage.save_remote_profile(&pubkey, profile)
+            {
+                eprintln!("[follow-sync] failed to store profile: {e}");
             }
             println!(
                 "[follow-sync] synced {} posts from {}",
@@ -631,9 +631,9 @@ pub fn run() {
                 let sync_handler = sync::SyncHandler::new(storage_clone.clone());
 
                 let router = Router::builder(endpoint.clone())
-                    .accept(iroh_blobs::ALPN.to_vec(), blobs.clone())
-                    .accept(iroh_gossip::ALPN.to_vec(), gossip.clone())
-                    .accept(sync::SYNC_ALPN.to_vec(), sync_handler)
+                    .accept(iroh_blobs::ALPN, blobs.clone())
+                    .accept(iroh_gossip::ALPN, gossip.clone())
+                    .accept(sync::SYNC_ALPN, sync_handler)
                     .spawn();
                 println!("[setup] router spawned");
 
