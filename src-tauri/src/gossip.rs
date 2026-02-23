@@ -146,15 +146,23 @@ impl FeedManager {
                             match serde_json::from_slice(&msg.content) {
                                 Ok(GossipMessage::NewPost(post)) => {
                                     if post.author == pk {
-                                        println!(
-                                            "[gossip-rx] new post {} from {}",
-                                            &post.id,
-                                            &pk[..8]
-                                        );
-                                        if let Err(e) = storage.insert_post(&post) {
-                                            eprintln!("[gossip-rx] failed to store post: {e}");
+                                        if let Err(reason) = crate::validate_post(&post) {
+                                            eprintln!(
+                                                "[gossip-rx] rejected post {} from {}: {reason}",
+                                                &post.id,
+                                                &pk[..8]
+                                            );
+                                        } else {
+                                            println!(
+                                                "[gossip-rx] new post {} from {}",
+                                                &post.id,
+                                                &pk[..8]
+                                            );
+                                            if let Err(e) = storage.insert_post(&post) {
+                                                eprintln!("[gossip-rx] failed to store post: {e}");
+                                            }
+                                            let _ = app_handle.emit("feed-updated", ());
                                         }
-                                        let _ = app_handle.emit("feed-updated", ());
                                     } else {
                                         println!(
                                             "[gossip-rx] ignored post from {} (expected {})",
@@ -165,11 +173,34 @@ impl FeedManager {
                                 }
                                 Ok(GossipMessage::DeletePost { id, author }) => {
                                     if author == pk {
-                                        println!("[gossip-rx] delete post {id} from {}", &pk[..8]);
-                                        if let Err(e) = storage.delete_post(&id) {
-                                            eprintln!("[gossip-rx] failed to delete post: {e}");
+                                        // Verify the stored post belongs to this author
+                                        match storage.get_post_by_id(&id) {
+                                            Ok(Some(post)) if post.author == pk => {
+                                                println!(
+                                                    "[gossip-rx] delete post {id} from {}",
+                                                    &pk[..8]
+                                                );
+                                                if let Err(e) = storage.delete_post(&id) {
+                                                    eprintln!(
+                                                        "[gossip-rx] failed to delete post: {e}"
+                                                    );
+                                                }
+                                                let _ = app_handle.emit("feed-updated", ());
+                                            }
+                                            Ok(Some(_)) => {
+                                                eprintln!(
+                                                    "[gossip-rx] rejected delete for {id}: author mismatch"
+                                                );
+                                            }
+                                            Ok(None) => {
+                                                // Post not in our DB; ignore
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "[gossip-rx] failed to look up post {id}: {e}"
+                                                );
+                                            }
                                         }
-                                        let _ = app_handle.emit("feed-updated", ());
                                     }
                                 }
                                 Ok(GossipMessage::ProfileUpdate(profile)) => {

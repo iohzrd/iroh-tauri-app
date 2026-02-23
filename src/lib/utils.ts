@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { Profile } from "$lib/types";
 
 const AVATAR_COLORS = [
   "#7c3aed",
@@ -49,10 +50,9 @@ export async function getDisplayName(
   const cached = displayNameCache.get(pubkey);
   if (cached !== undefined) return cached;
   try {
-    const profile = (await invoke("get_remote_profile", { pubkey })) as {
-      display_name: string;
-      bio: string;
-    } | null;
+    const profile = (await invoke("get_remote_profile", {
+      pubkey,
+    })) as Profile | null;
     const name =
       profile && profile.display_name ? profile.display_name : shortId(pubkey);
     displayNameCache.set(pubkey, name);
@@ -66,4 +66,49 @@ export async function getDisplayName(
 
 export async function copyToClipboard(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
+}
+
+// Shared helpers extracted from +page.svelte
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export function linkify(text: string): string {
+  const urlPattern = /https?:\/\/[^\s<>"')\]]+/g;
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let match;
+  while ((match = urlPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(escapeHtml(text.slice(lastIndex, match.index)));
+    }
+    const url = match[0];
+    parts.push(
+      `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`,
+    );
+    lastIndex = urlPattern.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(escapeHtml(text.slice(lastIndex)));
+  }
+  return parts.join("");
+}
+
+export function isImage(mime: string): boolean {
+  return mime.startsWith("image/");
+}
+
+export function isVideo(mime: string): boolean {
+  return mime.startsWith("video/");
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1048576).toFixed(1) + " MB";
 }

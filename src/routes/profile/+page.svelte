@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import type { Profile } from "$lib/types";
   import { copyToClipboard } from "$lib/utils";
 
   let nodeId = $state("");
@@ -20,8 +21,7 @@
   async function init() {
     try {
       nodeId = await invoke("get_node_id");
-      const profile: { display_name: string; bio: string } | null =
-        await invoke("get_my_profile");
+      const profile: Profile | null = await invoke("get_my_profile");
       if (profile) {
         displayName = profile.display_name;
         bio = profile.bio;

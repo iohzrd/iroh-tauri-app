@@ -1,6 +1,25 @@
 <script lang="ts">
   import { page } from "$app/state";
+  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
+  import type { NodeStatus } from "$lib/types";
+
   let { children } = $props();
+  let status = $state<NodeStatus | null>(null);
+
+  async function pollStatus() {
+    try {
+      status = await invoke("get_node_status");
+    } catch {
+      // Node not ready yet
+    }
+  }
+
+  onMount(() => {
+    pollStatus();
+    const interval = setInterval(pollStatus, 10000);
+    return () => clearInterval(interval);
+  });
 </script>
 
 <div class="app">
@@ -12,6 +31,23 @@
     <a href="/follows" class:active={page.url.pathname === "/follows"}
       >Follows</a
     >
+    {#if status}
+      <span
+        class="status-indicator"
+        title={status.has_relay
+          ? `Relay connected | ${status.follow_count} follow(s)`
+          : "No relay connection"}
+      >
+        <span
+          class="status-dot"
+          class:connected={status.has_relay}
+          class:disconnected={!status.has_relay}
+        ></span>
+        {#if status.follow_count > 0}
+          <span class="peer-count">{status.follow_count}</span>
+        {/if}
+      </span>
+    {/if}
   </nav>
   <main>
     {@render children()}
@@ -42,6 +78,7 @@
   nav {
     display: flex;
     gap: 0;
+    align-items: center;
     border-bottom: 1px solid #2a2a4a;
     position: sticky;
     top: 0;
@@ -70,6 +107,35 @@
   nav a.active {
     color: #a78bfa;
     border-bottom-color: #a78bfa;
+  }
+
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .status-dot.connected {
+    background: #22c55e;
+    box-shadow: 0 0 4px #22c55e80;
+  }
+
+  .status-dot.disconnected {
+    background: #ef4444;
+    box-shadow: 0 0 4px #ef444480;
+  }
+
+  .peer-count {
+    font-size: 0.7rem;
+    color: #666;
   }
 
   main {

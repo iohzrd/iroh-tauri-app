@@ -6,8 +6,8 @@ fn to_bytes<T: Serialize>(val: &T) -> Vec<u8> {
     postcard::to_allocvec(val).expect("serialization failed")
 }
 
-fn from_bytes<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> T {
-    postcard::from_bytes(bytes).expect("deserialization failed")
+fn from_bytes<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> anyhow::Result<T> {
+    postcard::from_bytes(bytes).map_err(|e| anyhow::anyhow!("deserialization failed: {e}"))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,7 +75,7 @@ impl Storage {
         let txn = self.db.begin_read()?;
         match txn.open_table(PROFILE_TABLE) {
             Ok(table) => match table.get("self")? {
-                Some(guard) => Ok(Some(from_bytes(guard.value()))),
+                Some(guard) => Ok(Some(from_bytes(guard.value())?)),
                 None => Ok(None),
             },
             Err(redb::TableError::TableDoesNotExist(_)) => Ok(None),
@@ -85,7 +85,20 @@ impl Storage {
 
     // -- Posts --
 
+    pub fn has_post(&self, timestamp: u64, id: &str) -> anyhow::Result<bool> {
+        let txn = self.db.begin_read()?;
+        match txn.open_table(POSTS_TABLE) {
+            Ok(table) => Ok(table.get((timestamp, id))?.is_some()),
+            Err(redb::TableError::TableDoesNotExist(_)) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub fn insert_post(&self, post: &Post) -> anyhow::Result<()> {
+        // Skip write transaction if post already exists
+        if self.has_post(post.timestamp, &post.id)? {
+            return Ok(());
+        }
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(POSTS_TABLE)?;
@@ -98,18 +111,39 @@ impl Storage {
         Ok(())
     }
 
+    pub fn get_post_by_id(&self, id: &str) -> anyhow::Result<Option<Post>> {
+        let txn = self.db.begin_read()?;
+        match txn.open_table(POSTS_TABLE) {
+            Ok(table) => {
+                for entry in table.range((0u64, "")..=(u64::MAX, "\u{10FFFF}"))? {
+                    let (_k, v) = entry?;
+                    let post: Post = from_bytes(v.value())?;
+                    if post.id == id {
+                        return Ok(Some(post));
+                    }
+                }
+                Ok(None)
+            }
+            Err(redb::TableError::TableDoesNotExist(_)) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub fn get_feed(&self, limit: usize, before: Option<u64>) -> anyhow::Result<Vec<Post>> {
         let txn = self.db.begin_read()?;
         match txn.open_table(POSTS_TABLE) {
             Ok(table) => {
-                let upper = before.unwrap_or(u64::MAX);
+                let upper = match before {
+                    Some(b) => b.saturating_sub(1),
+                    None => u64::MAX,
+                };
                 let mut posts = Vec::new();
                 for entry in table.range((0u64, "")..=(upper, "\u{10FFFF}"))?.rev() {
                     if posts.len() >= limit {
                         break;
                     }
                     let (_k, v) = entry?;
-                    posts.push(from_bytes(v.value()));
+                    posts.push(from_bytes(v.value())?);
                 }
                 Ok(posts)
             }
@@ -142,17 +176,26 @@ impl Storage {
         Ok(removed)
     }
 
-    pub fn get_posts_by_author(&self, author: &str, limit: usize) -> anyhow::Result<Vec<Post>> {
+    pub fn get_posts_by_author(
+        &self,
+        author: &str,
+        limit: usize,
+        before: Option<u64>,
+    ) -> anyhow::Result<Vec<Post>> {
         let txn = self.db.begin_read()?;
         match txn.open_table(POSTS_TABLE) {
             Ok(table) => {
+                let upper = match before {
+                    Some(b) => b.saturating_sub(1),
+                    None => u64::MAX,
+                };
                 let mut posts = Vec::new();
-                for entry in table.range((0u64, "")..=(u64::MAX, "\u{10FFFF}"))?.rev() {
+                for entry in table.range((0u64, "")..=(upper, "\u{10FFFF}"))?.rev() {
                     if posts.len() >= limit {
                         break;
                     }
                     let (_k, v) = entry?;
-                    let post: Post = from_bytes(v.value());
+                    let post: Post = from_bytes(v.value())?;
                     if post.author == author {
                         posts.push(post);
                     }
@@ -180,7 +223,7 @@ impl Storage {
         let txn = self.db.begin_read()?;
         match txn.open_table(REMOTE_PROFILES_TABLE) {
             Ok(table) => match table.get(pubkey)? {
-                Some(guard) => Ok(Some(from_bytes(guard.value()))),
+                Some(guard) => Ok(Some(from_bytes(guard.value())?)),
                 None => Ok(None),
             },
             Err(redb::TableError::TableDoesNotExist(_)) => Ok(None),
@@ -217,7 +260,7 @@ impl Storage {
                 let mut follows = Vec::new();
                 for entry in table.iter()? {
                     let (_k, v) = entry?;
-                    follows.push(from_bytes(v.value()));
+                    follows.push(from_bytes(v.value())?);
                 }
                 Ok(follows)
             }

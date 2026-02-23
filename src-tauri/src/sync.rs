@@ -59,19 +59,13 @@ impl ProtocolHandler for SyncHandler {
 
         let posts = self
             .storage
-            .get_posts_by_author(&req.author, req.limit as usize)
+            .get_posts_by_author(&req.author, req.limit as usize, req.before)
             .map_err(|e| {
                 AcceptError::from_err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     e.to_string(),
                 ))
             })?;
-
-        // Filter by `before` if specified
-        let posts: Vec<Post> = match req.before {
-            Some(before) => posts.into_iter().filter(|p| p.timestamp < before).collect(),
-            None => posts,
-        };
 
         // Include our own profile in the response
         let profile = self.storage.get_profile().ok().flatten();

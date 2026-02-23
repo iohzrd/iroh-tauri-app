@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import type { FollowEntry } from "$lib/types";
   import {
     avatarColor,
     getInitials,
@@ -9,17 +10,12 @@
     copyToClipboard,
   } from "$lib/utils";
 
-  interface FollowEntry {
-    pubkey: string;
-    alias: string | null;
-    followed_at: number;
-  }
-
   let follows = $state<FollowEntry[]>([]);
   let newPubkey = $state("");
   let loading = $state(true);
   let status = $state("");
   let copyFeedback = $state("");
+  let pendingUnfollowPubkey = $state<string | null>(null);
 
   async function copyWithFeedback(text: string, label: string) {
     await copyToClipboard(text);
@@ -60,13 +56,23 @@
     }
   }
 
-  async function unfollowUser(pubkey: string) {
+  function confirmUnfollow(pubkey: string) {
+    pendingUnfollowPubkey = pubkey;
+  }
+
+  async function executeUnfollow() {
+    if (!pendingUnfollowPubkey) return;
     try {
-      await invoke("unfollow_user", { pubkey });
+      await invoke("unfollow_user", { pubkey: pendingUnfollowPubkey });
       await loadFollows();
     } catch (e) {
       status = `Error: ${e}`;
     }
+    pendingUnfollowPubkey = null;
+  }
+
+  function cancelUnfollow() {
+    pendingUnfollowPubkey = null;
   }
 
   function handleKey(e: KeyboardEvent) {
@@ -102,10 +108,31 @@
     <p class="status">{status}</p>
   {/if}
 
+  {#if pendingUnfollowPubkey}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="modal-overlay" onclick={cancelUnfollow} role="presentation">
+      <!-- svelte-ignore a11y_interactive_supports_focus -->
+      <div
+        class="modal"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Confirm unfollow"
+      >
+        <p>Unfollow this user? You will stop receiving their posts.</p>
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick={cancelUnfollow}>Cancel</button>
+          <button class="modal-confirm" onclick={executeUnfollow}
+            >Unfollow</button
+          >
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <div class="follow-list">
     {#each follows as f (f.pubkey)}
       <div class="follow-item">
-        <div class="follow-info">
+        <a href="/user/{f.pubkey}" class="follow-info">
           {#await getDisplayName(f.pubkey, "") then name}
             <div class="avatar" style="background:{avatarColor(f.pubkey)}">
               {getInitials(name)}
@@ -117,16 +144,21 @@
               <code>{shortId(f.pubkey)}</code>
             </div>
           {/await}
+        </a>
+        <div class="follow-actions">
           <button
             class="copy-btn"
             onclick={() => copyWithFeedback(f.pubkey, f.pubkey)}
           >
             {copyFeedback === f.pubkey ? "Copied!" : "Copy"}
           </button>
+          <button
+            class="unfollow-btn"
+            onclick={() => confirmUnfollow(f.pubkey)}
+          >
+            Unfollow
+          </button>
         </div>
-        <button class="unfollow-btn" onclick={() => unfollowUser(f.pubkey)}>
-          Unfollow
-        </button>
       </div>
     {:else}
       <p class="empty">
@@ -214,6 +246,14 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    text-decoration: none;
+    color: inherit;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .follow-info:hover .display-name {
+    text-decoration: underline;
   }
 
   .follow-identity {
@@ -231,6 +271,13 @@
   code {
     color: #7dd3fc;
     font-size: 0.85rem;
+  }
+
+  .follow-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
   }
 
   .copy-btn {
@@ -274,5 +321,66 @@
     color: #888;
     font-size: 0.85rem;
     margin: 0.5rem 0;
+  }
+
+  /* Unfollow confirmation modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    padding: 1.5rem;
+    max-width: 320px;
+    width: 90%;
+  }
+
+  .modal p {
+    margin: 0 0 1rem;
+    text-align: center;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .modal-cancel {
+    flex: 1;
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .modal-cancel:hover {
+    background: #3a3a5a;
+  }
+
+  .modal-confirm {
+    flex: 1;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .modal-confirm:hover {
+    background: #b91c1c;
   }
 </style>

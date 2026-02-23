@@ -3,40 +3,20 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import Timeago from "$lib/Timeago.svelte";
+  import Lightbox from "$lib/Lightbox.svelte";
+  import type { MediaAttachment, Post, PendingAttachment } from "$lib/types";
   import {
     avatarColor,
     getInitials,
     shortId,
     getDisplayName,
-    clearDisplayNameCache,
     evictDisplayName,
     copyToClipboard,
+    linkify,
+    isImage,
+    isVideo,
+    formatSize,
   } from "$lib/utils";
-
-  interface MediaAttachment {
-    hash: string;
-    ticket: string;
-    mime_type: string;
-    filename: string;
-    size: number;
-  }
-
-  interface Post {
-    id: string;
-    author: string;
-    content: string;
-    timestamp: number;
-    media: MediaAttachment[];
-  }
-
-  interface PendingAttachment {
-    hash: string;
-    ticket: string;
-    mime_type: string;
-    filename: string;
-    size: number;
-    previewUrl: string;
-  }
 
   const MAX_POST_LENGTH = 500;
 
@@ -54,6 +34,10 @@
   let showScrollTop = $state(false);
   let toastMessage = $state("");
   let toastType = $state<"error" | "success">("error");
+  let loadingMore = $state(false);
+  let hasMore = $state(true);
+  let lightboxSrc = $state("");
+  let lightboxAlt = $state("");
 
   // Cache for fetched blob URLs so we don't re-fetch
   const blobUrlCache = new Map<string, string>();
@@ -97,36 +81,6 @@
     setTimeout(() => (copyFeedback = ""), 1500);
   }
 
-  function escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function linkify(text: string): string {
-    // Extract URLs before escaping, then rebuild with escaped non-URL segments
-    const urlPattern = /https?:\/\/[^\s<>"')\]]+/g;
-    const parts: string[] = [];
-    let lastIndex = 0;
-    let match;
-    while ((match = urlPattern.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(escapeHtml(text.slice(lastIndex, match.index)));
-      }
-      const url = match[0];
-      parts.push(
-        `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`,
-      );
-      lastIndex = urlPattern.lastIndex;
-    }
-    if (lastIndex < text.length) {
-      parts.push(escapeHtml(text.slice(lastIndex)));
-    }
-    return parts.join("");
-  }
-
   async function init() {
     try {
       nodeId = await invoke("get_node_id");
@@ -145,10 +99,33 @@
       });
       revokeStaleBlobUrls(newPosts);
       posts = newPosts;
+      hasMore = newPosts.length >= 50;
     } catch (e) {
       showToast("Failed to load feed");
       console.error("Failed to load feed:", e);
     }
+  }
+
+  async function loadMore() {
+    if (loadingMore || !hasMore || posts.length === 0) return;
+    loadingMore = true;
+    try {
+      const oldest = posts[posts.length - 1];
+      const olderPosts: Post[] = await invoke("get_feed", {
+        limit: 50,
+        before: oldest.timestamp,
+      });
+      if (olderPosts.length === 0) {
+        hasMore = false;
+      } else {
+        posts = [...posts, ...olderPosts];
+        hasMore = olderPosts.length >= 50;
+      }
+    } catch (e) {
+      showToast("Failed to load more posts");
+      console.error("Failed to load more:", e);
+    }
+    loadingMore = false;
   }
 
   async function syncAll() {
@@ -280,18 +257,19 @@
     return url;
   }
 
-  function formatSize(bytes: number) {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / 1048576).toFixed(1) + " MB";
-  }
-
-  function isImage(mime: string) {
-    return mime.startsWith("image/");
-  }
-
-  function isVideo(mime: string) {
-    return mime.startsWith("video/");
+  async function downloadFile(att: MediaAttachment) {
+    try {
+      const url = await getBlobUrl(att);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = att.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      showToast(`Failed to download ${att.filename}`);
+      console.error("Download failed:", e);
+    }
   }
 
   function handleKey(e: KeyboardEvent) {
@@ -309,12 +287,35 @@
     showScrollTop = window.scrollY > 400;
   }
 
+  // Visibility-aware auto-sync
+  let syncInterval: ReturnType<typeof setInterval> | null = null;
+
+  function startAutoSync() {
+    if (syncInterval) return;
+    syncInterval = setInterval(() => syncAll(), 60000);
+  }
+
+  function stopAutoSync() {
+    if (syncInterval) {
+      clearInterval(syncInterval);
+      syncInterval = null;
+    }
+  }
+
+  function handleVisibility() {
+    if (document.hidden) {
+      stopAutoSync();
+    } else {
+      syncAll();
+      startAutoSync();
+    }
+  }
+
   onMount(() => {
     init();
     const unlisteners: Promise<UnlistenFn>[] = [];
     unlisteners.push(
       listen("feed-updated", () => {
-        clearDisplayNameCache();
         loadFeed();
       }),
     );
@@ -326,17 +327,27 @@
       }),
     );
     window.addEventListener("scroll", handleScroll);
-    const interval = setInterval(() => {
-      syncAll();
-    }, 60000);
+    document.addEventListener("visibilitychange", handleVisibility);
+    startAutoSync();
     return () => {
-      clearInterval(interval);
+      stopAutoSync();
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("scroll", handleScroll);
       unlisteners.forEach((p) => p.then((fn) => fn()));
       revokeAllBlobUrls();
     };
   });
 </script>
+
+{#if lightboxSrc}
+  <Lightbox
+    src={lightboxSrc}
+    alt={lightboxAlt}
+    onclose={() => {
+      lightboxSrc = "";
+    }}
+  />
+{/if}
 
 {#if loading}
   <div class="loading">
@@ -444,19 +455,23 @@
           {#await getDisplayName(post.author, nodeId)}
             {@const fallback =
               post.author === nodeId ? "You" : shortId(post.author)}
-            <div class="avatar" style="background:{avatarColor(post.author)}">
-              {getInitials(fallback, post.author === nodeId)}
-            </div>
-            <span class="author" class:self={post.author === nodeId}>
-              {fallback}
-            </span>
+            <a href="/user/{post.author}" class="author-link">
+              <div class="avatar" style="background:{avatarColor(post.author)}">
+                {getInitials(fallback, post.author === nodeId)}
+              </div>
+              <span class="author" class:self={post.author === nodeId}>
+                {fallback}
+              </span>
+            </a>
           {:then name}
-            <div class="avatar" style="background:{avatarColor(post.author)}">
-              {getInitials(name, post.author === nodeId)}
-            </div>
-            <span class="author" class:self={post.author === nodeId}>
-              {name}
-            </span>
+            <a href="/user/{post.author}" class="author-link">
+              <div class="avatar" style="background:{avatarColor(post.author)}">
+                {getInitials(name, post.author === nodeId)}
+              </div>
+              <span class="author" class:self={post.author === nodeId}>
+                {name}
+              </span>
+            </a>
           {/await}
           <div class="post-header-right">
             <span class="time"><Timeago timestamp={post.timestamp} /></span>
@@ -477,7 +492,15 @@
                 {#await getBlobUrl(att)}
                   <div class="media-placeholder">Loading...</div>
                 {:then url}
-                  <img src={url} alt={att.filename} class="media-img" />
+                  <button
+                    class="media-img-btn"
+                    onclick={() => {
+                      lightboxSrc = url;
+                      lightboxAlt = att.filename;
+                    }}
+                  >
+                    <img src={url} alt={att.filename} class="media-img" />
+                  </button>
                 {:catch}
                   <div class="media-placeholder">Failed to load</div>
                 {/await}
@@ -492,10 +515,11 @@
                   <div class="media-placeholder">Failed to load</div>
                 {/await}
               {:else}
-                <div class="media-file">
+                <button class="media-file" onclick={() => downloadFile(att)}>
                   <span>{att.filename}</span>
                   <span class="file-size">{formatSize(att.size)}</span>
-                </div>
+                  <span class="download-label">Download</span>
+                </button>
               {/if}
             {/each}
           </div>
@@ -505,6 +529,16 @@
       <p class="empty">No posts yet. Write something or follow someone!</p>
     {/each}
   </div>
+
+  {#if hasMore && posts.length > 0}
+    <button class="load-more" onclick={loadMore} disabled={loadingMore}>
+      {#if loadingMore}
+        <span class="btn-spinner"></span> Loading...
+      {:else}
+        Load more
+      {/if}
+    </button>
+  {/if}
 
   <button class="refresh" onclick={syncAll} disabled={syncing}>
     {#if syncing}
@@ -832,6 +866,18 @@
     margin-left: auto;
   }
 
+  .author-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .author-link:hover .author {
+    text-decoration: underline;
+  }
+
   .avatar {
     width: 32px;
     height: 32px;
@@ -901,12 +947,22 @@
     gap: 0.5rem;
   }
 
+  .media-img-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: zoom-in;
+    display: block;
+    width: 100%;
+  }
+
   .media-img {
     width: 100%;
     border-radius: 6px;
     max-height: 400px;
     object-fit: contain;
     background: #0f0f23;
+    display: block;
   }
 
   .media-video {
@@ -926,6 +982,7 @@
 
   .media-file {
     background: #0f0f23;
+    border: 1px solid #2a2a4a;
     border-radius: 6px;
     padding: 0.75rem;
     display: flex;
@@ -933,6 +990,14 @@
     align-items: center;
     color: #c4b5fd;
     font-size: 0.85rem;
+    cursor: pointer;
+    width: 100%;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+
+  .media-file:hover {
+    border-color: #a78bfa;
   }
 
   .file-size {
@@ -940,10 +1005,41 @@
     font-size: 0.75rem;
   }
 
+  .download-label {
+    color: #7dd3fc;
+    font-size: 0.75rem;
+  }
+
   .empty {
     text-align: center;
     color: #666;
     padding: 2rem;
+  }
+
+  .load-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    margin: 0.5rem 0;
+    background: #16213e;
+    color: #c4b5fd;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 0.6rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .load-more:hover:not(:disabled) {
+    border-color: #a78bfa;
+  }
+
+  .load-more:disabled {
+    opacity: 0.7;
+    cursor: default;
   }
 
   .refresh {
