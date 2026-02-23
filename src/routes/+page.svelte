@@ -232,6 +232,10 @@
       displayNameCache.delete(pubkey);
       loadFeed();
     });
+    const interval = setInterval(() => {
+      syncAll();
+    }, 60000);
+    return () => clearInterval(interval);
   });
 </script>
 
