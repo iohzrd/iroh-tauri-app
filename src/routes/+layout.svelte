@@ -1,11 +1,39 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { onMount } from "svelte";
   import type { NodeStatus } from "$lib/types";
 
+  const ZOOM_KEY = "app-zoom-level";
+  const ZOOM_STEP = 0.2;
+  const ZOOM_MIN = 0.2;
+  const ZOOM_MAX = 10.0;
+
   let { children } = $props();
   let status = $state<NodeStatus | null>(null);
+  let zoomLevel = 1.0;
+
+  async function applyZoom(level: number) {
+    zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
+    localStorage.setItem(ZOOM_KEY, String(zoomLevel));
+    await getCurrentWebview().setZoom(zoomLevel);
+  }
+
+  function handleZoomKeys(e: KeyboardEvent) {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    if (e.key === "=" || e.key === "+") {
+      e.preventDefault();
+      applyZoom(zoomLevel + ZOOM_STEP);
+    } else if (e.key === "-") {
+      e.preventDefault();
+      applyZoom(zoomLevel - ZOOM_STEP);
+    } else if (e.key === "0") {
+      e.preventDefault();
+      applyZoom(1.0);
+    }
+  }
 
   async function pollStatus() {
     try {
@@ -16,9 +44,21 @@
   }
 
   onMount(() => {
+    const saved = localStorage.getItem(ZOOM_KEY);
+    if (saved) {
+      const parsed = parseFloat(saved);
+      if (Number.isFinite(parsed)) {
+        applyZoom(parsed);
+      }
+    }
+
+    window.addEventListener("keydown", handleZoomKeys);
     pollStatus();
     const interval = setInterval(pollStatus, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      window.removeEventListener("keydown", handleZoomKeys);
+      clearInterval(interval);
+    };
   });
 </script>
 
