@@ -53,30 +53,56 @@ impl DmHandler {
         endpoint: &Endpoint,
         peer_pubkey: &str,
     ) -> anyhow::Result<RatchetState> {
+        println!(
+            "[dm] get_or_establish_session: peer={}",
+            short_id(peer_pubkey)
+        );
+
         // Try loading existing session
         if let Some(json) = self.storage.get_ratchet_session(peer_pubkey)? {
+            println!(
+                "[dm] loaded existing ratchet session for {} ({} bytes)",
+                short_id(peer_pubkey),
+                json.len()
+            );
             let state: RatchetState = serde_json::from_str(&json)?;
             return Ok(state);
         }
 
         // No session -- need to handshake
         println!(
-            "[dm] initiating Noise handshake with {}",
+            "[dm] no existing session, initiating Noise IK handshake with {}",
             short_id(peer_pubkey)
         );
 
-        let peer_id: EndpointId = peer_pubkey.parse()?;
+        let peer_id: EndpointId = peer_pubkey.parse().map_err(|e| {
+            eprintln!("[dm] failed to parse peer pubkey: {e}");
+            anyhow::anyhow!("invalid peer pubkey: {e}")
+        })?;
         let peer_ed_public = peer_id.as_bytes();
         let peer_x25519_public = ed25519_public_to_x25519(peer_ed_public)
             .ok_or_else(|| anyhow::anyhow!("invalid peer public key"))?;
+        println!("[dm] converted peer ed25519 -> x25519 key");
 
         // Noise IK handshake: initiator
         let (initiator_hs, msg1) = noise_initiate(&self.my_x25519_private, &peer_x25519_public)
             .map_err(|e| anyhow::anyhow!("noise init: {e}"))?;
+        println!(
+            "[dm] noise init message created ({} bytes)",
+            msg1.len()
+        );
 
         // Connect and perform handshake
         let addr = EndpointAddr::from(peer_id);
-        let conn = endpoint.connect(addr, DM_ALPN).await?;
+        println!(
+            "[dm] connecting to {} on DM_ALPN...",
+            short_id(peer_pubkey)
+        );
+        let conn = endpoint.connect(addr, DM_ALPN).await.map_err(|e| {
+            eprintln!("[dm] QUIC connect failed to {}: {e}", short_id(peer_pubkey));
+            e
+        })?;
+        println!("[dm] QUIC connected, opening bi-stream...");
         let (mut send, mut recv) = conn.open_bi().await?;
 
         // Send handshake init
@@ -84,11 +110,17 @@ impl DmHandler {
             noise_message: msg1,
         };
         let bytes = serde_json::to_vec(&handshake)?;
+        println!("[dm] sending handshake init ({} bytes)...", bytes.len());
         send.write_all(&bytes).await?;
         send.finish()?;
 
         // Read handshake response
+        println!("[dm] waiting for handshake response...");
         let resp_bytes = recv.read_to_end(65536).await?;
+        println!(
+            "[dm] received handshake response ({} bytes)",
+            resp_bytes.len()
+        );
         let resp: DmHandshake = serde_json::from_slice(&resp_bytes)?;
 
         let noise_response = match resp {
@@ -99,6 +131,7 @@ impl DmHandler {
         // Complete handshake
         let shared_secret = noise_complete_initiator(initiator_hs, &noise_response)
             .map_err(|e| anyhow::anyhow!("noise complete: {e}"))?;
+        println!("[dm] noise handshake completed successfully");
 
         conn.close(0u32.into(), b"done");
 
@@ -110,7 +143,10 @@ impl DmHandler {
         self.storage
             .save_ratchet_session(peer_pubkey, &json, now_millis())?;
 
-        println!("[dm] established session with {}", short_id(peer_pubkey));
+        println!(
+            "[dm] established and saved ratchet session with {}",
+            short_id(peer_pubkey)
+        );
         Ok(ratchet)
     }
 
@@ -336,13 +372,14 @@ impl DmHandler {
                     reply_to: msg.reply_to,
                 };
 
-                self.storage.insert_dm_message(&stored)?;
+                // Conversation first (FK constraint), then message
                 self.storage.upsert_conversation(
                     remote_pubkey,
                     &self.my_pubkey_str,
                     msg.timestamp,
                     &preview,
                 )?;
+                self.storage.insert_dm_message(&stored)?;
                 self.storage.increment_unread(&conv_id)?;
 
                 println!("[dm] received message from {}", short_id(remote_pubkey));

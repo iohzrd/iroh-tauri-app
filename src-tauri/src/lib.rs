@@ -502,6 +502,14 @@ async fn send_dm(
     media: Option<Vec<MediaAttachment>>,
     reply_to: Option<String>,
 ) -> Result<StoredMessage, String> {
+    println!(
+        "[dm-cmd] send_dm called: to={}, content_len={}, media={:?}, reply_to={:?}",
+        short_id(&to),
+        content.len(),
+        media.as_ref().map(|m| m.len()),
+        reply_to
+    );
+
     let my_id = state.endpoint.id().to_string();
     let msg_id = uuid::Uuid::new_v4().to_string();
     let timestamp = now_millis();
@@ -522,7 +530,7 @@ async fn send_dm(
     };
 
     let stored = StoredMessage {
-        id: msg_id,
+        id: msg_id.clone(),
         conversation_id: conv_id,
         from_pubkey: my_id.clone(),
         to_pubkey: to.clone(),
@@ -534,23 +542,33 @@ async fn send_dm(
         reply_to,
     };
 
-    // Store locally
-    state
-        .storage
-        .insert_dm_message(&stored)
-        .map_err(|e| e.to_string())?;
+    // Store locally -- conversation first (FK constraint), then message
     state
         .storage
         .upsert_conversation(&to, &my_id, timestamp, &preview)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            eprintln!("[dm-cmd] upsert_conversation error: {e}");
+            e.to_string()
+        })?;
+    state
+        .storage
+        .insert_dm_message(&stored)
+        .map_err(|e| {
+            eprintln!("[dm-cmd] insert_dm_message error: {e}");
+            e.to_string()
+        })?;
+
+    println!("[dm-cmd] stored message {} locally", short_id(&msg_id));
 
     // Send async
     let endpoint = state.endpoint.clone();
     let dm_handler = state.dm.clone();
     let to_clone = to.clone();
     tokio::spawn(async move {
-        if let Err(e) = dm_handler.send_dm(&endpoint, &to_clone, dm_msg).await {
-            eprintln!("[dm] failed to send to {}: {e}", short_id(&to_clone));
+        println!("[dm-cmd] async send starting to {}", short_id(&to_clone));
+        match dm_handler.send_dm(&endpoint, &to_clone, dm_msg).await {
+            Ok(()) => println!("[dm-cmd] async send completed to {}", short_id(&to_clone)),
+            Err(e) => eprintln!("[dm-cmd] async send failed to {}: {e}", short_id(&to_clone)),
         }
     });
 
@@ -561,7 +579,9 @@ async fn send_dm(
 async fn get_conversations(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ConversationMeta>, String> {
-    state.storage.get_conversations().map_err(|e| e.to_string())
+    let convos = state.storage.get_conversations().map_err(|e| e.to_string())?;
+    println!("[dm-cmd] get_conversations: {} conversations", convos.len());
+    Ok(convos)
 }
 
 #[tauri::command]
@@ -573,10 +593,17 @@ async fn get_dm_messages(
 ) -> Result<Vec<StoredMessage>, String> {
     let my_id = state.endpoint.id().to_string();
     let conv_id = Storage::conversation_id(&my_id, &peer_pubkey);
-    state
+    let msgs = state
         .storage
         .get_dm_messages(&conv_id, limit.unwrap_or(50), before)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    println!(
+        "[dm-cmd] get_dm_messages: peer={}, conv={}, {} messages",
+        short_id(&peer_pubkey),
+        short_id(&conv_id),
+        msgs.len()
+    );
+    Ok(msgs)
 }
 
 #[tauri::command]

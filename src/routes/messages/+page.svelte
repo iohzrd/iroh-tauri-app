@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -11,6 +12,8 @@
   let loading = $state(true);
   let nodeId = $state("");
   let names = $state<Record<string, string>>({});
+  let newPubkey = $state("");
+  let newError = $state("");
 
   async function loadConversations() {
     try {
@@ -39,6 +42,19 @@
     }
   }
 
+  function startConversation() {
+    const key = newPubkey.trim();
+    if (!key) return;
+    if (key === nodeId) {
+      newError = "Cannot message yourself";
+      setTimeout(() => (newError = ""), 2000);
+      return;
+    }
+    newPubkey = "";
+    newError = "";
+    goto(`/messages/${key}`);
+  }
+
   onMount(() => {
     init();
     const unlisteners: Promise<UnlistenFn>[] = [];
@@ -60,6 +76,26 @@
   </div>
 {:else}
   <h2 class="page-title">Messages</h2>
+
+  <div class="new-conversation">
+    <input
+      type="text"
+      class="new-input"
+      placeholder="Paste a Node ID to start a conversation..."
+      bind:value={newPubkey}
+      onkeydown={(e) => e.key === "Enter" && startConversation()}
+    />
+    <button
+      class="new-btn"
+      onclick={startConversation}
+      disabled={!newPubkey.trim()}
+    >
+      Chat
+    </button>
+  </div>
+  {#if newError}
+    <p class="new-error">{newError}</p>
+  {/if}
 
   {#if conversations.length === 0}
     <div class="empty">
@@ -111,6 +147,60 @@
     margin: 0 0 1rem;
     color: #a78bfa;
     font-size: 1.1rem;
+  }
+
+  .new-conversation {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .new-input {
+    flex: 1;
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    color: #e0e0e0;
+    font-size: 0.8rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .new-input:focus {
+    border-color: #7c3aed;
+  }
+
+  .new-input::placeholder {
+    color: #555;
+  }
+
+  .new-btn {
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .new-btn:hover:not(:disabled) {
+    background: #6d28d9;
+  }
+
+  .new-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .new-error {
+    color: #f87171;
+    font-size: 0.8rem;
+    margin: -0.5rem 0 0.75rem;
   }
 
   .empty {

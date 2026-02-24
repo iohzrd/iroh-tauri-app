@@ -16,6 +16,7 @@
   let loading = $state(true);
   let messageText = $state("");
   let sending = $state(false);
+  let sendError = $state("");
   let hasMore = $state(true);
   let loadingMore = $state(false);
   let messagesContainer = $state<HTMLDivElement>(null!);
@@ -96,18 +97,19 @@
     const text = messageText.trim();
     if (!text || sending) return;
     sending = true;
+    sendError = "";
     try {
       const msg: StoredMessage = await invoke("send_dm", {
         to: pubkey,
         content: text,
-        media: null,
-        replyTo: null,
       });
       messages = [...messages, msg];
       messageText = "";
       requestAnimationFrame(() => scrollToBottom());
     } catch (e) {
       console.error("Failed to send message:", e);
+      sendError = String(e);
+      setTimeout(() => (sendError = ""), 5000);
     }
     sending = false;
   }
@@ -254,6 +256,9 @@
       {/each}
     </div>
 
+    {#if sendError}
+      <div class="send-error">{sendError}</div>
+    {/if}
     <div class="compose-bar">
       <textarea
         class="compose-input"
@@ -435,6 +440,14 @@
     justify-content: center;
     color: #666;
     font-size: 0.9rem;
+  }
+
+  .send-error {
+    background: #f8717120;
+    color: #f87171;
+    font-size: 0.8rem;
+    padding: 0.4rem 1rem;
+    border-top: 1px solid #f8717140;
   }
 
   .compose-bar {

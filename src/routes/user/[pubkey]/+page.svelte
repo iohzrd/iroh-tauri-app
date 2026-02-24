@@ -284,14 +284,17 @@
   </div>
 
   {#if !isSelf}
-    <button
-      class="follow-toggle"
-      class:following={isFollowing}
-      onclick={toggleFollow}
-      disabled={toggling}
-    >
-      {toggling ? "..." : isFollowing ? "Unfollow" : "Follow"}
-    </button>
+    <div class="action-row">
+      <button
+        class="follow-toggle"
+        class:following={isFollowing}
+        onclick={toggleFollow}
+        disabled={toggling}
+      >
+        {toggling ? "..." : isFollowing ? "Unfollow" : "Follow"}
+      </button>
+      <a href="/messages/{pubkey}" class="message-btn">Message</a>
+    </div>
   {/if}
 
   <div class="filter-bar">
@@ -467,8 +470,14 @@
     background: #3a3a5a;
   }
 
+  .action-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
   .follow-toggle {
-    width: 100%;
+    flex: 1;
     background: #7c3aed;
     color: white;
     border: none;
@@ -477,7 +486,24 @@
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
-    margin-bottom: 1rem;
+  }
+
+  .message-btn {
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    transition: background 0.2s;
+  }
+
+  .message-btn:hover {
+    background: #3a3a5a;
   }
 
   .follow-toggle:hover:not(:disabled) {
