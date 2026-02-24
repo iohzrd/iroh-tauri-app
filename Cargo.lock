@@ -3012,7 +3012,7 @@ dependencies = [
 
 [[package]]
 name = "iroh-social-types"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "iroh-gossip",
  "serde",
@@ -3022,7 +3022,7 @@ dependencies = [
 
 [[package]]
 name = "iroh-tauri-app"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "bytes",
