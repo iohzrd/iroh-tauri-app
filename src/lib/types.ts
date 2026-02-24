@@ -50,3 +50,23 @@ export interface NodeStatus {
   follow_count: number;
   follower_count: number;
 }
+
+export interface ConversationMeta {
+  peer_pubkey: string;
+  last_message_at: number;
+  last_message_preview: string;
+  unread_count: number;
+}
+
+export interface StoredMessage {
+  id: string;
+  conversation_id: string;
+  from_pubkey: string;
+  to_pubkey: string;
+  content: string;
+  timestamp: number;
+  media: MediaAttachment[];
+  read: boolean;
+  delivered: boolean;
+  reply_to: string | null;
+}

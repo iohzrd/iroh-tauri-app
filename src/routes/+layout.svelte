@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { onMount } from "svelte";
   import type { NodeStatus } from "$lib/types";
@@ -13,6 +14,7 @@
   let { children } = $props();
   let status = $state<NodeStatus | null>(null);
   let zoomLevel = 1.0;
+  let unreadDmCount = $state(0);
 
   async function applyZoom(level: number) {
     zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
@@ -43,6 +45,14 @@
     }
   }
 
+  async function pollUnread() {
+    try {
+      unreadDmCount = await invoke("get_unread_dm_count");
+    } catch {
+      // Node not ready yet
+    }
+  }
+
   onMount(() => {
     const saved = localStorage.getItem(ZOOM_KEY);
     if (saved) {
@@ -54,10 +64,20 @@
 
     window.addEventListener("keydown", handleZoomKeys);
     pollStatus();
-    const interval = setInterval(pollStatus, 10000);
+    pollUnread();
+    const statusInterval = setInterval(pollStatus, 10000);
+    const unreadInterval = setInterval(pollUnread, 10000);
+    const unlisteners: Promise<UnlistenFn>[] = [];
+    unlisteners.push(
+      listen("dm-received", () => {
+        pollUnread();
+      }),
+    );
     return () => {
       window.removeEventListener("keydown", handleZoomKeys);
-      clearInterval(interval);
+      clearInterval(statusInterval);
+      clearInterval(unreadInterval);
+      unlisteners.forEach((p) => p.then((fn) => fn()));
     };
   });
 </script>
@@ -68,6 +88,15 @@
     <a href="/profile" class:active={page.url.pathname === "/profile"}
       >Profile</a
     >
+    <a
+      href="/messages"
+      class:active={page.url.pathname.startsWith("/messages")}
+    >
+      Messages
+      {#if unreadDmCount > 0}
+        <span class="unread-badge">{unreadDmCount}</span>
+      {/if}
+    </a>
     <a href="/follows" class:active={page.url.pathname === "/follows"}
       >Follows</a
     >
@@ -147,6 +176,22 @@
   nav a.active {
     color: #a78bfa;
     border-bottom-color: #a78bfa;
+  }
+
+  .unread-badge {
+    background: #7c3aed;
+    color: white;
+    font-size: 0.6rem;
+    font-weight: 700;
+    border-radius: 999px;
+    min-width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    margin-left: 2px;
+    vertical-align: super;
   }
 
   .status-indicator {

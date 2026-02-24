@@ -1,15 +1,19 @@
+mod crypto;
+mod dm;
 mod gossip;
 mod storage;
 mod sync;
 
+use crate::dm::DmHandler;
 use crate::gossip::FeedManager;
 use crate::storage::Storage;
 use iroh::{Endpoint, SecretKey, protocol::Router};
 use iroh_blobs::{BlobsProtocol, HashAndFormat, store::fs::FsStore, ticket::BlobTicket};
 use iroh_gossip::Gossip;
 use iroh_social_types::{
-    FollowEntry, FollowerEntry, MAX_BLOB_SIZE, MediaAttachment, Post, Profile, now_millis,
-    short_id, validate_post, validate_profile,
+    ConversationMeta, DM_ALPN, DirectMessage, FollowEntry, FollowerEntry, MAX_BLOB_SIZE,
+    MediaAttachment, Post, Profile, StoredMessage, now_millis, short_id, validate_post,
+    validate_profile,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -24,6 +28,7 @@ pub struct AppState {
     pub store: FsStore,
     pub storage: Arc<Storage>,
     pub feed: Arc<Mutex<FeedManager>>,
+    pub dm: DmHandler,
 }
 
 // -- Identity --
@@ -487,6 +492,152 @@ async fn get_node_status(state: State<'_, Arc<AppState>>) -> Result<NodeStatus, 
     })
 }
 
+// -- Direct Messages --
+
+#[tauri::command]
+async fn send_dm(
+    state: State<'_, Arc<AppState>>,
+    to: String,
+    content: String,
+    media: Option<Vec<MediaAttachment>>,
+    reply_to: Option<String>,
+) -> Result<StoredMessage, String> {
+    let my_id = state.endpoint.id().to_string();
+    let msg_id = uuid::Uuid::new_v4().to_string();
+    let timestamp = now_millis();
+
+    let dm_msg = DirectMessage {
+        id: msg_id.clone(),
+        content: content.clone(),
+        timestamp,
+        media: media.clone().unwrap_or_default(),
+        reply_to: reply_to.clone(),
+    };
+
+    let conv_id = Storage::conversation_id(&my_id, &to);
+    let preview = if content.len() > 80 {
+        format!("{}...", &content[..77])
+    } else {
+        content.clone()
+    };
+
+    let stored = StoredMessage {
+        id: msg_id,
+        conversation_id: conv_id,
+        from_pubkey: my_id.clone(),
+        to_pubkey: to.clone(),
+        content,
+        timestamp,
+        media: media.unwrap_or_default(),
+        read: true,
+        delivered: false,
+        reply_to,
+    };
+
+    // Store locally
+    state
+        .storage
+        .insert_dm_message(&stored)
+        .map_err(|e| e.to_string())?;
+    state
+        .storage
+        .upsert_conversation(&to, &my_id, timestamp, &preview)
+        .map_err(|e| e.to_string())?;
+
+    // Send async
+    let endpoint = state.endpoint.clone();
+    let dm_handler = state.dm.clone();
+    let to_clone = to.clone();
+    tokio::spawn(async move {
+        if let Err(e) = dm_handler.send_dm(&endpoint, &to_clone, dm_msg).await {
+            eprintln!("[dm] failed to send to {}: {e}", short_id(&to_clone));
+        }
+    });
+
+    Ok(stored)
+}
+
+#[tauri::command]
+async fn get_conversations(
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<ConversationMeta>, String> {
+    state.storage.get_conversations().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_dm_messages(
+    state: State<'_, Arc<AppState>>,
+    peer_pubkey: String,
+    limit: Option<usize>,
+    before: Option<u64>,
+) -> Result<Vec<StoredMessage>, String> {
+    let my_id = state.endpoint.id().to_string();
+    let conv_id = Storage::conversation_id(&my_id, &peer_pubkey);
+    state
+        .storage
+        .get_dm_messages(&conv_id, limit.unwrap_or(50), before)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn mark_dm_read(state: State<'_, Arc<AppState>>, peer_pubkey: String) -> Result<(), String> {
+    let my_id = state.endpoint.id().to_string();
+    state
+        .storage
+        .mark_conversation_read(&peer_pubkey, &my_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_dm_message(
+    state: State<'_, Arc<AppState>>,
+    message_id: String,
+) -> Result<(), String> {
+    state
+        .storage
+        .delete_dm_message(&message_id)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn flush_dm_outbox(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let peers = state
+        .storage
+        .get_all_outbox_peers()
+        .map_err(|e| e.to_string())?;
+    let endpoint = state.endpoint.clone();
+    let dm_handler = state.dm.clone();
+
+    let mut total_sent = 0u32;
+    let mut total_failed = 0u32;
+    for peer in peers {
+        match dm_handler.flush_outbox_for_peer(&endpoint, &peer).await {
+            Ok((sent, failed)) => {
+                total_sent += sent;
+                total_failed += failed;
+            }
+            Err(e) => {
+                eprintln!("[dm-outbox] flush error for {}: {e}", short_id(&peer));
+                total_failed += 1;
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "sent": total_sent,
+        "failed": total_failed,
+    }))
+}
+
+#[tauri::command]
+async fn get_unread_dm_count(state: State<'_, Arc<AppState>>) -> Result<u32, String> {
+    state
+        .storage
+        .get_total_unread_count()
+        .map_err(|e| e.to_string())
+}
+
 // -- Setup --
 
 fn load_or_create_key(path: &std::path::Path) -> SecretKey {
@@ -600,6 +751,7 @@ pub fn run() {
             let follows = storage.get_follows().unwrap_or_default();
             println!("[setup] loaded {} follows", follows.len());
 
+            let secret_key_bytes = secret_key.to_bytes();
             let storage_clone = storage.clone();
             tauri::async_runtime::spawn(async move {
                 println!("[setup] binding iroh endpoint...");
@@ -609,6 +761,7 @@ pub fn run() {
                         iroh_blobs::ALPN.to_vec(),
                         iroh_gossip::ALPN.to_vec(),
                         sync::SYNC_ALPN.to_vec(),
+                        DM_ALPN.to_vec(),
                     ])
                     .bind()
                     .await
@@ -635,11 +788,18 @@ pub fn run() {
                 println!("[setup] gossip started");
 
                 let sync_handler = sync::SyncHandler::new(storage_clone.clone());
+                let dm_handler = DmHandler::new(
+                    storage_clone.clone(),
+                    handle.clone(),
+                    secret_key_bytes,
+                    endpoint.id().to_string(),
+                );
 
                 let router = Router::builder(endpoint.clone())
                     .accept(iroh_blobs::ALPN, blobs.clone())
                     .accept(iroh_gossip::ALPN, gossip.clone())
                     .accept(sync::SYNC_ALPN, sync_handler)
+                    .accept(DM_ALPN, dm_handler.clone())
                     .spawn();
                 println!("[setup] router spawned");
 
@@ -724,6 +884,40 @@ pub fn run() {
                     println!("[startup-sync] done");
                 });
 
+                // Spawn DM outbox flush task (every 60s)
+                let outbox_dm = dm_handler.clone();
+                let outbox_ep = endpoint.clone();
+                let outbox_storage = storage_clone.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                        let peers = match outbox_storage.get_all_outbox_peers() {
+                            Ok(p) => p,
+                            Err(e) => {
+                                eprintln!("[dm-outbox] failed to get peers: {e}");
+                                continue;
+                            }
+                        };
+                        for peer in peers {
+                            match outbox_dm.flush_outbox_for_peer(&outbox_ep, &peer).await {
+                                Ok((sent, _)) if sent > 0 => {
+                                    println!(
+                                        "[dm-outbox] flushed {sent} queued messages to {}",
+                                        short_id(&peer)
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "[dm-outbox] flush error for {}: {e}",
+                                        short_id(&peer)
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                });
+
                 let state = Arc::new(AppState {
                     endpoint,
                     router,
@@ -731,6 +925,7 @@ pub fn run() {
                     store,
                     storage: storage_clone,
                     feed: Arc::new(Mutex::new(feed)),
+                    dm: dm_handler,
                 });
 
                 handle.manage(state);
@@ -759,6 +954,13 @@ pub fn run() {
             add_blob_bytes,
             fetch_blob_bytes,
             get_node_status,
+            send_dm,
+            get_conversations,
+            get_dm_messages,
+            mark_dm_read,
+            delete_dm_message,
+            flush_dm_outbox,
+            get_unread_dm_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

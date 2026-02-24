@@ -18,8 +18,11 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 anyhow = { workspace = true }
 bytes = "1"
+chacha20poly1305 = "0.10"
+curve25519-dalek = { version = "4", default-features = false }
 futures-lite = "2"
 getrandom = "0.4.1"
+hkdf = "0.12"
 iroh = "0.96"
 iroh-blobs = { version = "0.98", features = ["fs-store"] }
 iroh-gossip = { workspace = true }
@@ -28,6 +31,11 @@ rand = "0.8"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
+snow = "0.10"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+zeroize = "1"
