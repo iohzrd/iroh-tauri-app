@@ -157,25 +157,39 @@ impl Storage {
         author: &str,
         limit: usize,
         before: Option<u64>,
+        media_filter: Option<&str>,
     ) -> anyhow::Result<Vec<Post>> {
+        let filter_clause = match media_filter {
+            Some("images") => " AND media_json LIKE '%image/%'",
+            Some("videos") => " AND media_json LIKE '%video/%'",
+            Some("audio") => " AND media_json LIKE '%audio/%'",
+            Some("files") => {
+                " AND media_json != '[]' AND media_json NOT LIKE '%image/%' AND media_json NOT LIKE '%video/%' AND media_json NOT LIKE '%audio/%'"
+            }
+            Some("text") => " AND media_json = '[]'",
+            _ => "",
+        };
+
         let db = self.db.lock().unwrap();
         let mut posts = Vec::new();
         match before {
             Some(b) => {
-                let mut stmt = db.prepare(
+                let sql = format!(
                     "SELECT id, author, content, timestamp, media_json FROM posts
-                     WHERE author=?1 AND timestamp < ?2 ORDER BY timestamp DESC LIMIT ?3",
-                )?;
+                     WHERE author=?1 AND timestamp < ?2{filter_clause} ORDER BY timestamp DESC LIMIT ?3"
+                );
+                let mut stmt = db.prepare(&sql)?;
                 let mut rows = stmt.query(params![author, b as i64, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
                 }
             }
             None => {
-                let mut stmt = db.prepare(
+                let sql = format!(
                     "SELECT id, author, content, timestamp, media_json FROM posts
-                     WHERE author=?1 ORDER BY timestamp DESC LIMIT ?2",
-                )?;
+                     WHERE author=?1{filter_clause} ORDER BY timestamp DESC LIMIT ?2"
+                );
+                let mut stmt = db.prepare(&sql)?;
                 let mut rows = stmt.query(params![author, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);

@@ -31,6 +31,16 @@
   let toastMessage = $state("");
   let toastType = $state<"error" | "success">("error");
   let sentinel = $state<HTMLDivElement>(null!);
+  let mediaFilter = $state("all");
+
+  const FILTERS = [
+    { value: "all", label: "All" },
+    { value: "images", label: "Images" },
+    { value: "videos", label: "Videos" },
+    { value: "audio", label: "Audio" },
+    { value: "files", label: "Files" },
+    { value: "text", label: "Text" },
+  ] as const;
 
   const blobUrlCache = new Map<string, string>();
 
@@ -64,6 +74,7 @@
         pubkey,
         limit: 50,
         before: null,
+        mediaFilter: mediaFilter === "all" ? null : mediaFilter,
       });
       posts = allPosts;
       hasMore = allPosts.length >= 50;
@@ -83,6 +94,7 @@
         pubkey,
         limit: 50,
         before: null,
+        mediaFilter: mediaFilter === "all" ? null : mediaFilter,
       });
       posts = newPosts;
       hasMore = newPosts.length >= 50;
@@ -112,6 +124,7 @@
         pubkey,
         limit: 50,
         before: oldest.timestamp,
+        mediaFilter: mediaFilter === "all" ? null : mediaFilter,
       });
       if (olderPosts.length === 0) {
         hasMore = false;
@@ -195,6 +208,17 @@
     return () => scrollObserver?.disconnect();
   });
 
+  let prevFilter = "all";
+  $effect(() => {
+    const current = mediaFilter;
+    if (current !== prevFilter) {
+      prevFilter = current;
+      posts = [];
+      hasMore = true;
+      reloadPosts();
+    }
+  });
+
   onMount(() => {
     init();
     const unlisteners: Promise<UnlistenFn>[] = [];
@@ -269,6 +293,18 @@
       {toggling ? "..." : isFollowing ? "Unfollow" : "Follow"}
     </button>
   {/if}
+
+  <div class="filter-bar">
+    {#each FILTERS as f (f.value)}
+      <button
+        class="filter-chip"
+        class:active={mediaFilter === f.value}
+        onclick={() => (mediaFilter = f.value)}
+      >
+        {f.label}
+      </button>
+    {/each}
+  </div>
 
   <h3 class="section-title">
     Posts{posts.length > 0 ? ` (${posts.length}${hasMore ? "+" : ""})` : ""}
@@ -461,6 +497,39 @@
   .follow-toggle:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .filter-bar {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-chip {
+    background: #2a2a4a;
+    color: #888;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition:
+      background 0.2s,
+      color 0.2s,
+      border-color 0.2s;
+  }
+
+  .filter-chip:hover {
+    color: #c4b5fd;
+    border-color: #3a3a5a;
+  }
+
+  .filter-chip.active {
+    background: #7c3aed;
+    color: white;
+    border-color: #7c3aed;
   }
 
   .section-title {

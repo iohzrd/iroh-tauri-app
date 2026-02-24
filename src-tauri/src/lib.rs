@@ -166,10 +166,16 @@ async fn get_user_posts(
     pubkey: String,
     limit: Option<usize>,
     before: Option<u64>,
+    media_filter: Option<String>,
 ) -> Result<Vec<Post>, String> {
     state
         .storage
-        .get_posts_by_author(&pubkey, limit.unwrap_or(50), before)
+        .get_posts_by_author(
+            &pubkey,
+            limit.unwrap_or(50),
+            before,
+            media_filter.as_deref(),
+        )
         .map_err(|e| e.to_string())
 }
 
