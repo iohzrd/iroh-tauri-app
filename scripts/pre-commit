@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Auto-bump patch version for frontend and backend independently
+# Only bumps if files in the respective directory are staged
+
+bump_patch() {
+    local version="$1"
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$version"
+    echo "${major}.${minor}.$((patch + 1))"
+}
+
+# Check for staged frontend files (src/ or root config, excluding package.json to avoid loops)
+if git diff --cached --name-only | grep -q '^src/' && \
+   ! git diff --cached --name-only | grep -qx 'package.json'; then
+    current=$(grep '"version"' package.json | head -1 | sed 's/.*"\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/')
+    new=$(bump_patch "$current")
+    sed -i "s/\"version\": \"$current\"/\"version\": \"$new\"/" package.json
+    git add package.json
+    echo "frontend: $current -> $new"
+fi
+
+# Check for staged tauri/rust files (excluding version files to avoid loops)
+if git diff --cached --name-only | grep -q '^src-tauri/' && \
+   ! git diff --cached --name-only | grep -qx 'src-tauri/tauri.conf.json'; then
+    tauri_conf="src-tauri/tauri.conf.json"
+    tauri_current=$(grep '"version"' "$tauri_conf" | head -1 | sed 's/.*"\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/')
+    tauri_new=$(bump_patch "$tauri_current")
+    sed -i "s/\"version\": \"$tauri_current\"/\"version\": \"$tauri_new\"/" "$tauri_conf"
+    git add "$tauri_conf"
+    echo "tauri: $tauri_current -> $tauri_new"
+fi
