@@ -15,7 +15,6 @@ use iroh_social_types::{
     MediaAttachment, Post, Profile, StoredMessage, now_millis, short_id, validate_post,
     validate_profile,
 };
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -95,7 +94,16 @@ async fn create_post(
     let author = state.endpoint.id().to_string();
     let media_count = media.as_ref().map_or(0, |m| m.len());
     let post = Post {
-        id: format!("{:016x}", rand::thread_rng().r#gen::<u64>()),
+        id: {
+            let mut bytes = [0u8; 16];
+            getrandom::fill(&mut bytes).expect("failed to generate random bytes");
+            let (a, b) = bytes.split_at(8);
+            format!(
+                "{:016x}{:016x}",
+                u64::from_le_bytes(a.try_into().unwrap()),
+                u64::from_le_bytes(b.try_into().unwrap())
+            )
+        },
         author,
         content,
         timestamp: now_millis(),
