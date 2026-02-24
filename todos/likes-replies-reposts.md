@@ -45,6 +45,7 @@ Store interaction locally, update cached counts
 ```
 
 Interactions propagate through the **author's** gossip topic, not the target post's author's topic. This means:
+
 - You only see likes/replies/reposts from people you follow (or yourself).
 - This is consistent with how posts work -- you see content from people you follow.
 - Community servers can aggregate across all registered users for full counts.
@@ -81,6 +82,7 @@ pub enum InteractionKind {
 ### Why replies are interactions, not posts
 
 Replies could be modeled as posts with a `parent_id` field, but treating them as interactions has advantages:
+
 - **Unified interaction model** -- likes, replies, and reposts share the same propagation path and storage pattern.
 - **Threading is explicit** -- A reply always references a specific post. The `content` field carries the reply text.
 - **Replies appear in both contexts** -- They show up in the parent post's thread AND in the author's feed (since they propagate on the author's topic).
@@ -91,11 +93,11 @@ A reply with `content` and optional `media` is functionally equivalent to a post
 
 ```typescript
 interface PostCounts {
-    likes: number;
-    replies: number;
-    reposts: number;
-    liked_by_me: boolean;
-    reposted_by_me: boolean;
+  likes: number;
+  replies: number;
+  reposts: number;
+  liked_by_me: boolean;
+  reposted_by_me: boolean;
 }
 ```
 
@@ -324,17 +326,20 @@ async fn delete_interaction(id: String) -> Result<(), String>;
 ### Command Behavior
 
 **`like_post`:**
+
 1. Create Interaction with kind=Like, generate UUID.
 2. Save to local storage.
 3. Broadcast `GossipMessage::NewInteraction` on own topic.
 4. Return the interaction.
 
 **`unlike_post`:**
+
 1. Find the like interaction by (my_pubkey, "like", target_author, target_post_id).
 2. Delete from storage.
 3. Broadcast `GossipMessage::DeleteInteraction` on own topic.
 
 **`reply_to_post`:**
+
 1. Validate content (non-empty, length check).
 2. Create Interaction with kind=Reply, content, media.
 3. Save and broadcast.
@@ -361,6 +366,7 @@ Each post gets an action bar below its content:
 ### Post Detail / Thread View
 
 When a post is tapped/clicked, expand to show:
+
 - Full post content.
 - Reply composer.
 - Replies listed chronologically below the post.
@@ -376,22 +382,22 @@ When a post is tapped/clicked, expand to show:
 
 ```typescript
 interface Interaction {
-    id: string;
-    author: string;
-    kind: "like" | "reply" | "repost";
-    target_post_id: string;
-    target_author: string;
-    timestamp: number;
-    content: string | null;
-    media: MediaAttachment[];
+  id: string;
+  author: string;
+  kind: "like" | "reply" | "repost";
+  target_post_id: string;
+  target_author: string;
+  timestamp: number;
+  content: string | null;
+  media: MediaAttachment[];
 }
 
 interface PostCounts {
-    likes: number;
-    replies: number;
-    reposts: number;
-    liked_by_me: boolean;
-    reposted_by_me: boolean;
+  likes: number;
+  replies: number;
+  reposts: number;
+  liked_by_me: boolean;
+  reposted_by_me: boolean;
 }
 ```
 
@@ -401,13 +407,13 @@ Listen for these Tauri events to update counts in real time:
 
 ```typescript
 listen("interaction-received", (event) => {
-    // Update counts for the target post
-    // If it's a reply, add to thread if viewing
+  // Update counts for the target post
+  // If it's a reply, add to thread if viewing
 });
 
 listen("interaction-deleted", (event) => {
-    // Decrement counts for the target post
-    // Remove from thread if viewing
+  // Decrement counts for the target post
+  // Remove from thread if viewing
 });
 ```
 

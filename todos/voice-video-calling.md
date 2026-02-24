@@ -81,6 +81,7 @@ Alice                              Bob
 ### Audio Pipeline
 
 **Capture (frontend, via WebView):**
+
 ```
 navigator.mediaDevices.getUserMedia({ audio: true })
   -> MediaStream -> AudioContext -> ScriptProcessorNode / AudioWorklet
@@ -88,18 +89,21 @@ navigator.mediaDevices.getUserMedia({ audio: true })
 ```
 
 **Encode (Rust):**
+
 ```
 PCM samples -> opus::Encoder (48kHz, mono, 20ms frames)
   -> Opus frame bytes -> QUIC unidirectional stream
 ```
 
 **Decode (Rust):**
+
 ```
 QUIC stream -> Opus frame bytes -> opus::Decoder
   -> PCM samples -> send to frontend via Tauri event
 ```
 
 **Playback (frontend):**
+
 ```
 Tauri event -> AudioContext -> AudioBuffer -> speaker output
 ```
@@ -156,6 +160,7 @@ QUIC Connection (CALL_ALPN)
 ### Video Pipeline
 
 **Capture (frontend):**
+
 ```
 navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, frameRate: 24 } })
   -> MediaStream -> <video> element -> Canvas
@@ -164,18 +169,21 @@ navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, frameRat
 ```
 
 **Encode (Rust):**
+
 ```
 Raw pixels -> VP9 encoder -> compressed frame
   -> QUIC unidirectional stream
 ```
 
 **Decode (Rust):**
+
 ```
 QUIC stream -> compressed frame -> VP9 decoder
   -> raw pixels -> send to frontend via Tauri event
 ```
 
 **Render (frontend):**
+
 ```
 Tauri event -> ImageData -> Canvas / <img> element
 ```
@@ -203,6 +211,7 @@ struct VideoFrame {
 ### Adaptive Bitrate
 
 Monitor QUIC stream throughput and adjust:
+
 - If packet loss or latency increases: reduce resolution (320x240) and bitrate (250kbps)
 - If bandwidth is good: increase to 1280x720 and 2000kbps
 - Audio always takes priority over video bandwidth
@@ -273,6 +282,7 @@ video-frame          { call_id, data: Vec<u8> }
 ### Frontend Components
 
 **Call overlay component (global, in layout):**
+
 - Incoming call notification with accept/reject
 - Active call UI: timer, mute button, video toggle, end call
 - Video display (if video call)
@@ -282,19 +292,19 @@ video-frame          { call_id, data: Vec<u8> }
 
 ```typescript
 interface CallRecord {
-    call_id: string;
-    peer: string;
-    direction: "incoming" | "outgoing";
-    duration_seconds: number;
-    had_video: boolean;
-    timestamp: number;
-    ended_reason: string;
+  call_id: string;
+  peer: string;
+  direction: "incoming" | "outgoing";
+  duration_seconds: number;
+  had_video: boolean;
+  timestamp: number;
+  ended_reason: string;
 }
 
 interface IncomingCall {
-    call_id: string;
-    peer: string;
-    video: boolean;
+  call_id: string;
+  peer: string;
+  video: boolean;
 }
 ```
 
@@ -303,6 +313,7 @@ interface IncomingCall {
 ## Implementation Roadmap
 
 ### Phase 1: Voice Calling
+
 - [ ] Add `opus` crate dependency
 - [ ] Define `CALL_ALPN` protocol (`iroh-social/call/1`)
 - [ ] Implement call signaling over DM protocol (offer/answer/reject/end)
@@ -316,6 +327,7 @@ interface IncomingCall {
 - [ ] Add call history storage and display
 
 ### Phase 2: Video Calling
+
 - [ ] Add VP9 codec dependency (`vpx-sys` or `libvpx`)
 - [ ] Extend call signaling for video negotiation
 - [ ] Implement video frame capture (Canvas -> Rust)
@@ -327,5 +339,6 @@ interface IncomingCall {
 - [ ] Picture-in-picture support for minimized calls
 
 ### Phase 3: Polish
+
 - [ ] Connection quality indicator during calls
 - [ ] Call reconnection on network change

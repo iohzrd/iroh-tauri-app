@@ -62,6 +62,7 @@ Since both peers are often online simultaneously (P2P), we simplify X3DH:
 6. Both sides initialize the Double Ratchet with the shared root key.
 
 **Subsequent messages** use the Double Ratchet:
+
 - Each message advances the sending chain (new symmetric key per message).
 - When a reply is received, a DH ratchet step occurs (new DH keypair exchanged).
 - Old keys are deleted -- forward secrecy.
@@ -69,6 +70,7 @@ Since both peers are often online simultaneously (P2P), we simplify X3DH:
 ### Rust Crate
 
 Use `double-ratchet-rs` or implement on top of:
+
 - `x25519-dalek` -- X25519 Diffie-Hellman (already a transitive dep via iroh)
 - `hkdf` -- Key derivation
 - `chacha20poly1305` or `aes-gcm` -- AEAD symmetric encryption
@@ -79,12 +81,14 @@ Use `double-ratchet-rs` or implement on top of:
 Consider using the Noise Protocol Framework (`snow` crate) for the session establishment step instead of a hand-rolled X3DH. The `IK` handshake pattern is a close match: the initiator already knows the responder's static key (their iroh public key), and both sides authenticate and derive a shared secret in a formally verified pattern. This is the approach Signal uses -- Noise for session setup, Double Ratchet for ongoing per-message encryption.
 
 Advantages over custom X3DH:
+
 - Battle-tested framework (used by WireGuard, Lightning Network, libp2p, WhatsApp)
 - Handles ephemeral key generation, DH computations, key derivation, and AEAD binding internally
 - Less surface area for cryptographic bugs
 - The `snow` crate is mature and already uses `x25519-dalek` + `chacha20poly1305` under the hood
 
 Usage would look roughly like:
+
 ```rust
 let mut initiator = snow::Builder::new("Noise_IK_25519_ChaChaPoly_BLAKE2s".parse()?)
     .local_private_key(&my_x25519_private)
@@ -97,6 +101,7 @@ Noise does NOT replace the Double Ratchet -- it only covers session establishmen
 ### Session Storage
 
 Each DM conversation stores:
+
 - Root key (current ratchet state)
 - Sending chain key + message counter
 - Receiving chain key + message counter
@@ -264,11 +269,13 @@ typing-indicator     { peer }
 ### Frontend Pages
 
 **`/messages` page:**
+
 - Conversation list (sorted by last message time)
 - Unread count badges
 - Click to open conversation
 
 **`/messages/[pubkey]` page:**
+
 - Message thread with the peer
 - Text input with send button
 - Media attachment support (reuse existing blob upload)
@@ -284,20 +291,20 @@ Add "Messages" tab to `+layout.svelte` navigation bar (alongside Feed, Profile, 
 
 ```typescript
 interface ConversationMeta {
-    peer_pubkey: string;
-    last_message_at: number;
-    unread_count: number;
+  peer_pubkey: string;
+  last_message_at: number;
+  unread_count: number;
 }
 
 interface StoredMessage {
-    id: string;
-    from: string;
-    to: string;
-    content: string;
-    timestamp: number;
-    media: MediaAttachment[];
-    read: boolean;
-    reply_to: string | null;
+  id: string;
+  from: string;
+  to: string;
+  content: string;
+  timestamp: number;
+  media: MediaAttachment[];
+  read: boolean;
+  reply_to: string | null;
 }
 ```
 
@@ -306,6 +313,7 @@ interface StoredMessage {
 ## Implementation Roadmap
 
 ### Phase 1: E2E Encryption Foundation
+
 - [ ] Add `x25519-dalek`, `hkdf`, `chacha20poly1305` dependencies
 - [ ] Implement ed25519-to-X25519 key conversion
 - [ ] Implement X3DH-style session establishment
@@ -314,6 +322,7 @@ interface StoredMessage {
 - [ ] Write encryption/decryption tests
 
 ### Phase 2: Direct Messaging
+
 - [ ] Define `DM_ALPN` protocol (`iroh-social/dm/1`)
 - [ ] Implement `DmHandler` (ProtocolHandler for incoming DMs)
 - [ ] Implement DM sending (connect to peer, encrypt, send envelope)
@@ -327,6 +336,7 @@ interface StoredMessage {
 - [ ] Add typing indicators and read receipts
 
 ### Phase 3: Polish
+
 - [ ] Message search within conversations
 - [ ] Group DM support (3+ participants, shared ratchet)
 - [ ] Push notification integration (OS-level)

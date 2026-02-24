@@ -86,17 +86,21 @@ iroh-tauri-app/
 ### What moves to the shared crate
 
 From `src-tauri/src/storage.rs`:
+
 - `Post`, `Profile`, `MediaAttachment`, `FollowEntry` structs
 
 From `src-tauri/src/gossip.rs`:
+
 - `GossipMessage` enum
 - `user_feed_topic()` function
 
 From `src-tauri/src/sync.rs`:
+
 - `SyncRequest`, `SyncResponse` structs
 - `SYNC_ALPN` constant
 
 From `src-tauri/src/lib.rs`:
+
 - `validate_post()` function and validation constants
 
 The Tauri crate then imports these from `iroh-social-types` instead of defining them inline.
@@ -180,6 +184,7 @@ Both mechanisms are needed for completeness:
 **Gossip (real-time):** When a user registers, the server subscribes to their gossip topic (`user_feed_topic(pubkey)`). This is the same subscription pattern used by the Tauri client in `gossip.rs`. The server receives `NewPost`, `DeletePost`, and `ProfileUpdate` messages in real time.
 
 **Sync (historical catch-up):** Uses the existing `fetch_remote_posts()` function from `sync.rs`. Triggered on:
+
 - Server startup (sync all registered users)
 - New user registration (sync their history immediately)
 - Periodic catch-up every 15 minutes for users whose last gossip was >30 min ago
@@ -204,6 +209,7 @@ IngestionManager
 ### Validation
 
 Same checks as the Tauri client:
+
 - `validate_post()` (content length, media count, timestamp drift)
 - Author matches expected pubkey for the gossip topic
 - Deduplication via `(author, id)` unique constraint in SQLite
@@ -225,6 +231,7 @@ The server uses **sqlx** for database access, supporting both SQLite (simple sel
 ### Why not rusqlite?
 
 The Tauri client uses rusqlite because it's an embedded single-user desktop app where async provides no benefit. The server is different:
+
 - axum is async -- sqlx queries compose naturally without `spawn_blocking`
 - Connection pooling matters for concurrent HTTP request handling
 - Postgres support provides a scaling path for large communities
@@ -330,6 +337,7 @@ All endpoints under `/api/v1/`. Server also returns basic HTML at `GET /`.
 ### Endpoints
 
 #### Server Info
+
 ```
 GET /api/v1/info
 
@@ -341,6 +349,7 @@ Response: {
 ```
 
 #### Registration
+
 ```
 POST /api/v1/register
 Body: { pubkey, server_url, timestamp, signature }
@@ -353,6 +362,7 @@ Response (200): { message }
 ```
 
 #### User Directory
+
 ```
 GET /api/v1/users?limit=20&offset=0
 Response: { users: [...], total, limit, offset }
@@ -365,6 +375,7 @@ Response: { pubkey, display_name, bio, avatar_hash, registered_at, post_count, l
 ```
 
 #### Posts
+
 ```
 GET /api/v1/users/:pubkey/posts?limit=50&before=<timestamp>
 Response: { posts: [...] }
@@ -374,6 +385,7 @@ Response: { posts: [...], total, query }
 ```
 
 #### Feed (Global)
+
 ```
 GET /api/v1/feed?limit=50&before=<timestamp>
 Response: { posts: [...] }
@@ -383,6 +395,7 @@ Optional author filter for custom feeds.
 ```
 
 #### Trending
+
 ```
 GET /api/v1/trending?limit=10
 Response: { hashtags: [...], computed_at }
@@ -458,6 +471,7 @@ Add `reqwest` to `src-tauri/Cargo.toml` for HTTP client.
 ### New storage
 
 Add a `servers` table to the client's SQLite database:
+
 ```sql
 CREATE TABLE IF NOT EXISTS servers (
     url TEXT PRIMARY KEY,
@@ -470,20 +484,24 @@ CREATE TABLE IF NOT EXISTS servers (
 ### New frontend pages
 
 **`/servers` page:**
+
 - List connected servers with status (online/offline)
 - Add server by URL
 - Register/unregister with each server
 
 **`/discover` page (or integrated into servers):**
+
 - Browse user directory from a selected server
 - Search users by name
 - "Follow" button for discovered users
 
 **Search integration in feed:**
+
 - When servers are configured, show search bar
 - Results from server's FTS endpoint
 
 **Trending section:**
+
 - Display trending hashtags from connected server
 - Click hashtag to search
 
@@ -491,21 +509,32 @@ CREATE TABLE IF NOT EXISTS servers (
 
 ```typescript
 interface ServerInfo {
-    name: string; description: string; version: string;
-    node_id: string; registered_users: number;
-    total_posts: number; registration_open: boolean;
+  name: string;
+  description: string;
+  version: string;
+  node_id: string;
+  registered_users: number;
+  total_posts: number;
+  registration_open: boolean;
 }
 interface StoredServer {
-    url: string; name: string; is_registered: boolean;
-    added_at: number; status: "online" | "offline" | "unknown";
+  url: string;
+  name: string;
+  is_registered: boolean;
+  added_at: number;
+  status: "online" | "offline" | "unknown";
 }
 interface ServerUser {
-    pubkey: string; display_name: string | null;
-    bio: string | null; post_count: number;
+  pubkey: string;
+  display_name: string | null;
+  bio: string | null;
+  post_count: number;
 }
 interface TrendingHashtag {
-    tag: string; post_count: number;
-    unique_authors: number; score: number;
+  tag: string;
+  post_count: number;
+  unique_authors: number;
+  score: number;
 }
 ```
 
@@ -540,6 +569,7 @@ window_hours = 24
 ```
 
 CLI (via `clap`):
+
 ```
 iroh-social-server [OPTIONS]
   -c, --config <PATH>    Config file path (default: ./config.toml)
@@ -558,11 +588,13 @@ ALPN: b"iroh-social/federation/1"
 ```
 
 What gets shared between servers:
+
 - Registered user lists (pubkeys + profiles)
 - Post metadata (other servers fetch full posts from users via P2P)
 - Trending data
 
 What does NOT get shared:
+
 - Media blobs (fetch from users directly)
 - User credentials
 
@@ -573,12 +605,14 @@ Federation uses iroh's QUIC transport (not HTTP) for NAT traversal and consisten
 ## Implementation Roadmap
 
 ### Phase 1: Workspace Refactor
+
 - [ ] Create workspace root `Cargo.toml`
 - [ ] Create `crates/iroh-social-types/` with types extracted from `src-tauri/src/storage.rs`, `gossip.rs`, `sync.rs`, `lib.rs`
 - [ ] Update `src-tauri/Cargo.toml` to use workspace deps and depend on shared crate
 - [ ] Verify Tauri app builds and runs unchanged
 
 ### Phase 2: Server Core
+
 - [ ] Create `crates/iroh-social-server/` skeleton with `main.rs` and config
 - [ ] Implement sqlx storage layer with migrations (SQLite initially, Postgres-ready)
 - [ ] Set up full-text search (FTS5 for SQLite, tsvector for Postgres)
@@ -586,12 +620,14 @@ Federation uses iroh's QUIC transport (not HTTP) for NAT traversal and consisten
 - [ ] Implement registration verification (ed25519 signature check)
 
 ### Phase 3: Server API + Ingestion
+
 - [ ] Set up axum with middleware (CORS, rate limiting, logging)
 - [ ] Implement endpoints: `/info`, `/register`, `/users`, `/feed`, `/posts/search`, `/trending`
 - [ ] Implement ingestion manager (gossip subscriber + sync scheduler)
 - [ ] Implement trending computation background task
 
 ### Phase 4: Client Integration
+
 - [ ] Add `reqwest` to Tauri app
 - [ ] Add servers table to client SQLite storage
 - [ ] Implement Tauri commands for server interaction
@@ -599,6 +635,7 @@ Federation uses iroh's QUIC transport (not HTTP) for NAT traversal and consisten
 - [ ] Integrate search and discover into UI
 
 ### Phase 5: Polish
+
 - [ ] Error handling and logging
 - [ ] Server health check / metrics endpoint
 - [ ] Stub federation module with reserved ALPN
