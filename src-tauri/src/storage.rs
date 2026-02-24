@@ -14,8 +14,13 @@ impl std::fmt::Debug for Storage {
 }
 
 impl Storage {
-    const MIGRATIONS: &'static [(&'static str, &'static str)] =
-        &[("001_initial", include_str!("../migrations/001_initial.sql"))];
+    const MIGRATIONS: &'static [(&'static str, &'static str)] = &[
+        ("001_initial", include_str!("../migrations/001_initial.sql")),
+        (
+            "002_avatar_ticket",
+            include_str!("../migrations/002_avatar_ticket.sql"),
+        ),
+    ];
 
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let conn = Connection::open(path.as_ref())?;
@@ -56,23 +61,26 @@ impl Storage {
     pub fn save_profile(&self, profile: &Profile) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
         db.execute(
-            "INSERT INTO profile (key, display_name, bio, avatar_hash) VALUES ('self', ?1, ?2, ?3)
-             ON CONFLICT(key) DO UPDATE SET display_name=?1, bio=?2, avatar_hash=?3",
-            params![profile.display_name, profile.bio, profile.avatar_hash],
+            "INSERT INTO profile (key, display_name, bio, avatar_hash, avatar_ticket)
+             VALUES ('self', ?1, ?2, ?3, ?4)
+             ON CONFLICT(key) DO UPDATE SET display_name=?1, bio=?2, avatar_hash=?3, avatar_ticket=?4",
+            params![profile.display_name, profile.bio, profile.avatar_hash, profile.avatar_ticket],
         )?;
         Ok(())
     }
 
     pub fn get_profile(&self) -> anyhow::Result<Option<Profile>> {
         let db = self.db.lock().unwrap();
-        let mut stmt =
-            db.prepare("SELECT display_name, bio, avatar_hash FROM profile WHERE key='self'")?;
+        let mut stmt = db.prepare(
+            "SELECT display_name, bio, avatar_hash, avatar_ticket FROM profile WHERE key='self'",
+        )?;
         let mut rows = stmt.query([])?;
         match rows.next()? {
             Some(row) => Ok(Some(Profile {
                 display_name: row.get(0)?,
                 bio: row.get(1)?,
                 avatar_hash: row.get(2)?,
+                avatar_ticket: row.get(3)?,
             })),
             None => Ok(None),
         }
@@ -192,14 +200,15 @@ impl Storage {
     pub fn save_remote_profile(&self, pubkey: &str, profile: &Profile) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
         db.execute(
-            "INSERT INTO remote_profiles (pubkey, display_name, bio, avatar_hash)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(pubkey) DO UPDATE SET display_name=?2, bio=?3, avatar_hash=?4",
+            "INSERT INTO remote_profiles (pubkey, display_name, bio, avatar_hash, avatar_ticket)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(pubkey) DO UPDATE SET display_name=?2, bio=?3, avatar_hash=?4, avatar_ticket=?5",
             params![
                 pubkey,
                 profile.display_name,
                 profile.bio,
-                profile.avatar_hash
+                profile.avatar_hash,
+                profile.avatar_ticket
             ],
         )?;
         Ok(())
@@ -208,7 +217,7 @@ impl Storage {
     pub fn get_remote_profile(&self, pubkey: &str) -> anyhow::Result<Option<Profile>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare(
-            "SELECT display_name, bio, avatar_hash FROM remote_profiles WHERE pubkey=?1",
+            "SELECT display_name, bio, avatar_hash, avatar_ticket FROM remote_profiles WHERE pubkey=?1",
         )?;
         let mut rows = stmt.query(params![pubkey])?;
         match rows.next()? {
@@ -216,6 +225,7 @@ impl Storage {
                 display_name: row.get(0)?,
                 bio: row.get(1)?,
                 avatar_hash: row.get(2)?,
+                avatar_ticket: row.get(3)?,
             })),
             None => Ok(None),
         }
@@ -229,6 +239,15 @@ impl Storage {
             "INSERT INTO follows (pubkey, alias, followed_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(pubkey) DO UPDATE SET alias=?2, followed_at=?3",
             params![entry.pubkey, entry.alias, entry.followed_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_follow_alias(&self, pubkey: &str, alias: Option<&str>) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        db.execute(
+            "UPDATE follows SET alias=?2 WHERE pubkey=?1",
+            params![pubkey, alias],
         )?;
         Ok(())
     }

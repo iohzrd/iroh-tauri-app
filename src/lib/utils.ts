@@ -31,15 +31,20 @@ export function shortId(id: string): string {
   return id.slice(0, 8) + "..." + id.slice(-4);
 }
 
-// Shared display name cache and resolver
-const displayNameCache = new Map<string, string>();
+// Shared profile cache (name + avatar) and resolver
+interface CachedProfile {
+  name: string;
+  avatarTicket: string | null;
+}
+
+const profileCache = new Map<string, CachedProfile>();
 
 export function clearDisplayNameCache() {
-  displayNameCache.clear();
+  profileCache.clear();
 }
 
 export function evictDisplayName(pubkey: string) {
-  displayNameCache.delete(pubkey);
+  profileCache.delete(pubkey);
 }
 
 export async function getDisplayName(
@@ -47,21 +52,28 @@ export async function getDisplayName(
   selfId: string,
 ): Promise<string> {
   if (pubkey === selfId) return "You";
-  const cached = displayNameCache.get(pubkey);
-  if (cached !== undefined) return cached;
+  const cached = profileCache.get(pubkey);
+  if (cached !== undefined) return cached.name;
   try {
     const profile = (await invoke("get_remote_profile", {
       pubkey,
     })) as Profile | null;
     const name =
       profile && profile.display_name ? profile.display_name : shortId(pubkey);
-    displayNameCache.set(pubkey, name);
+    profileCache.set(pubkey, {
+      name,
+      avatarTicket: profile?.avatar_ticket ?? null,
+    });
     return name;
   } catch {
     const name = shortId(pubkey);
-    displayNameCache.set(pubkey, name);
+    profileCache.set(pubkey, { name, avatarTicket: null });
     return name;
   }
+}
+
+export function getCachedAvatarTicket(pubkey: string): string | null {
+  return profileCache.get(pubkey)?.avatarTicket ?? null;
 }
 
 export async function copyToClipboard(text: string): Promise<void> {

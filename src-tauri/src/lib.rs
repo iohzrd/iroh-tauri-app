@@ -45,11 +45,14 @@ async fn save_my_profile(
     state: State<'_, Arc<AppState>>,
     display_name: String,
     bio: String,
+    avatar_hash: Option<String>,
+    avatar_ticket: Option<String>,
 ) -> Result<(), String> {
     let profile = Profile {
         display_name: display_name.clone(),
         bio: bio.clone(),
-        avatar_hash: None,
+        avatar_hash,
+        avatar_ticket,
     };
     state
         .storage
@@ -276,6 +279,18 @@ async fn unfollow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Resul
     feed.unfollow_user(&pubkey);
     println!("[follow] unfollowed {}", &pubkey[..8]);
     Ok(())
+}
+
+#[tauri::command]
+async fn update_follow_alias(
+    state: State<'_, Arc<AppState>>,
+    pubkey: String,
+    alias: Option<String>,
+) -> Result<(), String> {
+    state
+        .storage
+        .update_follow_alias(&pubkey, alias.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -716,6 +731,7 @@ pub fn run() {
             sync_posts,
             follow_user,
             unfollow_user,
+            update_follow_alias,
             get_follows,
             get_followers,
             add_blob,

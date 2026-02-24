@@ -2,12 +2,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+  import Avatar from "$lib/Avatar.svelte";
   import type { FollowEntry, FollowerEntry } from "$lib/types";
   import {
-    avatarColor,
-    getInitials,
     shortId,
     getDisplayName,
+    getCachedAvatarTicket,
     copyToClipboard,
   } from "$lib/utils";
 
@@ -19,6 +19,8 @@
   let copyFeedback = $state("");
   let pendingUnfollowPubkey = $state<string | null>(null);
   let activeTab = $state<"following" | "followers">("following");
+  let editingAlias = $state<string | null>(null);
+  let aliasInput = $state("");
 
   async function copyWithFeedback(text: string, label: string) {
     await copyToClipboard(text);
@@ -92,6 +94,18 @@
       e.preventDefault();
       followUser();
     }
+  }
+
+  async function saveAlias() {
+    if (!editingAlias) return;
+    try {
+      const alias = aliasInput.trim() || null;
+      await invoke("update_follow_alias", { pubkey: editingAlias, alias });
+      await loadFollows();
+    } catch (e) {
+      status = `Error: ${e}`;
+    }
+    editingAlias = null;
   }
 
   onMount(() => {
@@ -179,11 +193,15 @@
         <div class="follow-item">
           <a href="/user/{f.pubkey}" class="follow-info">
             {#await getDisplayName(f.pubkey, "") then name}
-              <div class="avatar" style="background:{avatarColor(f.pubkey)}">
-                {getInitials(name)}
-              </div>
+              <Avatar
+                pubkey={f.pubkey}
+                {name}
+                ticket={getCachedAvatarTicket(f.pubkey)}
+              />
               <div class="follow-identity">
-                {#if name !== shortId(f.pubkey)}
+                {#if f.alias}
+                  <span class="display-name">{f.alias}</span>
+                {:else if name !== shortId(f.pubkey)}
                   <span class="display-name">{name}</span>
                 {/if}
                 <code>{shortId(f.pubkey)}</code>
@@ -191,6 +209,16 @@
             {/await}
           </a>
           <div class="follow-actions">
+            <button
+              class="alias-btn"
+              onclick={(e) => {
+                e.preventDefault();
+                editingAlias = f.pubkey;
+                aliasInput = f.alias ?? "";
+              }}
+            >
+              {f.alias ? "Edit alias" : "Set alias"}
+            </button>
             <button
               class="copy-btn"
               onclick={() => copyWithFeedback(f.pubkey, f.pubkey)}
@@ -211,15 +239,50 @@
         </p>
       {/each}
     </div>
+
+    {#if editingAlias}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="modal-overlay"
+        onclick={() => (editingAlias = null)}
+        role="presentation"
+      >
+        <!-- svelte-ignore a11y_interactive_supports_focus -->
+        <div
+          class="modal"
+          onclick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-label="Set alias"
+        >
+          <p>Set a local alias for this user</p>
+          <input
+            class="alias-input"
+            bind:value={aliasInput}
+            placeholder="Alias (leave empty to clear)"
+            onkeydown={(e) => {
+              if (e.key === "Enter") saveAlias();
+            }}
+          />
+          <div class="modal-actions">
+            <button class="modal-cancel" onclick={() => (editingAlias = null)}
+              >Cancel</button
+            >
+            <button class="modal-confirm save" onclick={saveAlias}>Save</button>
+          </div>
+        </div>
+      </div>
+    {/if}
   {:else}
     <div class="follow-list">
       {#each followers as f (f.pubkey)}
         <div class="follow-item">
           <a href="/user/{f.pubkey}" class="follow-info">
             {#await getDisplayName(f.pubkey, "") then name}
-              <div class="avatar" style="background:{avatarColor(f.pubkey)}">
-                {getInitials(name)}
-              </div>
+              <Avatar
+                pubkey={f.pubkey}
+                {name}
+                ticket={getCachedAvatarTicket(f.pubkey)}
+              />
               <div class="follow-identity">
                 {#if name !== shortId(f.pubkey)}
                   <span class="display-name">{name}</span>
@@ -342,20 +405,6 @@
     border-radius: 8px;
     padding: 0.75rem 1rem;
     margin-bottom: 0.5rem;
-  }
-
-  .avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: white;
-    flex-shrink: 0;
-    text-transform: uppercase;
   }
 
   .follow-info {
@@ -498,5 +547,47 @@
 
   .modal-confirm:hover {
     background: #b91c1c;
+  }
+
+  .modal-confirm.save {
+    background: #7c3aed;
+  }
+
+  .modal-confirm.save:hover {
+    background: #6d28d9;
+  }
+
+  .alias-btn {
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+    min-width: 48px;
+    text-align: center;
+  }
+
+  .alias-btn:hover {
+    background: #3a3a5a;
+  }
+
+  .alias-input {
+    width: 100%;
+    background: #0f0f23;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    color: #e0e0e0;
+    font-family: inherit;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+    margin-bottom: 1rem;
+  }
+
+  .alias-input:focus {
+    outline: none;
+    border-color: #a78bfa;
   }
 </style>

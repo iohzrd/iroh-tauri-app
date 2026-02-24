@@ -27,6 +27,7 @@ export interface Profile {
   display_name: string;
   bio: string;
   avatar_hash: string | null;
+  avatar_ticket: string | null;
 }
 
 export interface FollowEntry {

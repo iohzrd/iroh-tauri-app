@@ -2,20 +2,35 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import type { Profile } from "$lib/types";
-  import { copyToClipboard } from "$lib/utils";
+  import { avatarColor, getInitials, copyToClipboard } from "$lib/utils";
 
   let nodeId = $state("");
   let displayName = $state("");
   let bio = $state("");
+  let avatarHash = $state<string | null>(null);
+  let avatarTicket = $state<string | null>(null);
+  let avatarPreview = $state<string | null>(null);
   let loading = $state(true);
   let saving = $state(false);
+  let uploading = $state(false);
   let status = $state("");
   let copyFeedback = $state(false);
+  let fileInput = $state<HTMLInputElement>(null!);
 
   async function copyNodeId() {
     await copyToClipboard(nodeId);
     copyFeedback = true;
     setTimeout(() => (copyFeedback = false), 1500);
+  }
+
+  async function loadAvatarPreview(ticket: string) {
+    try {
+      const bytes: number[] = await invoke("fetch_blob_bytes", { ticket });
+      const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+      avatarPreview = URL.createObjectURL(blob);
+    } catch (e) {
+      console.error("Failed to load avatar:", e);
+    }
   }
 
   async function init() {
@@ -25,6 +40,11 @@
       if (profile) {
         displayName = profile.display_name;
         bio = profile.bio;
+        avatarHash = profile.avatar_hash;
+        avatarTicket = profile.avatar_ticket;
+        if (profile.avatar_ticket) {
+          await loadAvatarPreview(profile.avatar_ticket);
+        }
       }
       loading = false;
     } catch {
@@ -32,10 +52,48 @@
     }
   }
 
+  async function handleAvatarFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    uploading = true;
+    try {
+      const buffer = await file.arrayBuffer();
+      const data = Array.from(new Uint8Array(buffer));
+      const result: { hash: string; ticket: string } = await invoke(
+        "add_blob_bytes",
+        { data },
+      );
+      avatarHash = result.hash;
+      avatarTicket = result.ticket;
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+      avatarPreview = URL.createObjectURL(file);
+    } catch (e) {
+      status = `Upload failed: ${e}`;
+    }
+    uploading = false;
+    input.value = "";
+  }
+
+  function removeAvatar() {
+    avatarHash = null;
+    avatarTicket = null;
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+      avatarPreview = null;
+    }
+  }
+
   async function save() {
     saving = true;
     try {
-      await invoke("save_my_profile", { displayName, bio });
+      await invoke("save_my_profile", {
+        displayName,
+        bio,
+        avatarHash,
+        avatarTicket,
+      });
       status = "Saved!";
       setTimeout(() => (status = ""), 2000);
     } catch (e) {
@@ -46,6 +104,9 @@
 
   onMount(() => {
     init();
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    };
   });
 </script>
 
@@ -68,6 +129,40 @@
   </div>
 
   <div class="form">
+    <div class="field">
+      <span class="label">Avatar</span>
+      <div class="avatar-row">
+        {#if avatarPreview}
+          <img src={avatarPreview} alt="Avatar" class="avatar-preview" />
+        {:else}
+          <div class="avatar-fallback" style="background:{avatarColor(nodeId)}">
+            {getInitials(displayName || "You", !displayName)}
+          </div>
+        {/if}
+        <div class="avatar-actions">
+          <button
+            class="avatar-btn"
+            onclick={() => fileInput.click()}
+            disabled={uploading}
+          >
+            {uploading ? "Uploading..." : avatarHash ? "Change" : "Upload"}
+          </button>
+          {#if avatarHash}
+            <button class="avatar-btn remove" onclick={removeAvatar}>
+              Remove
+            </button>
+          {/if}
+        </div>
+        <input
+          bind:this={fileInput}
+          type="file"
+          accept="image/*"
+          onchange={handleAvatarFile}
+          hidden
+        />
+      </div>
+    </div>
+
     <div class="field">
       <span class="label">Display Name</span>
       <input bind:value={displayName} placeholder="Anonymous" />
@@ -149,6 +244,66 @@
     border: 1px solid #2a2a4a;
     border-radius: 8px;
     padding: 1.25rem;
+  }
+
+  .avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .avatar-preview {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .avatar-fallback {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 700;
+    color: white;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .avatar-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .avatar-btn {
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 4px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .avatar-btn:hover:not(:disabled) {
+    background: #3a3a5a;
+  }
+
+  .avatar-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .avatar-btn.remove {
+    color: #f87171;
+  }
+
+  .avatar-btn.remove:hover {
+    background: #f8717120;
   }
 
   input,

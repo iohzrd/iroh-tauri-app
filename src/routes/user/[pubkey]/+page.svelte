@@ -4,10 +4,9 @@
   import { onMount } from "svelte";
   import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
+  import Avatar from "$lib/Avatar.svelte";
   import type { MediaAttachment, Post, Profile, FollowEntry } from "$lib/types";
   import {
-    avatarColor,
-    getInitials,
     shortId,
     copyToClipboard,
     linkify,
@@ -197,9 +196,13 @@
   <a href="/" class="back-link">&larr; Back to feed</a>
 
   <div class="profile-header">
-    <div class="avatar-large" style="background:{avatarColor(pubkey)}">
-      {getInitials(displayName, isSelf)}
-    </div>
+    <Avatar
+      {pubkey}
+      name={displayName}
+      {isSelf}
+      ticket={profile?.avatar_ticket}
+      size={56}
+    />
     <div class="profile-info">
       <h2>{displayName}</h2>
       {#if profile?.bio}
@@ -332,20 +335,6 @@
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
-  }
-
-  .avatar-large {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    font-weight: 700;
-    color: white;
-    flex-shrink: 0;
-    text-transform: uppercase;
   }
 
   .profile-info {

@@ -14,7 +14,7 @@ Each node gets a permanent cryptographic identity (stored in `identity.key`). Yo
 - **Sync** -- Historical pull. When you follow someone, their existing posts are fetched via a custom QUIC protocol. On startup, all followed users are synced in parallel.
 - **Blobs** -- Content-addressed media storage. Images, videos, and files are stored locally and transferred peer-to-peer using iroh-blobs.
 
-All data is persisted in a local [redb](https://github.com/cberner/redb) embedded database. The app works offline and syncs when peers are available.
+All data is persisted in a local SQLite database. The app works offline and syncs when peers are available.
 
 ## Features
 

@@ -4,12 +4,12 @@
   import { onMount } from "svelte";
   import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
+  import Avatar from "$lib/Avatar.svelte";
   import type { MediaAttachment, Post, PendingAttachment } from "$lib/types";
   import {
-    avatarColor,
-    getInitials,
     shortId,
     getDisplayName,
+    getCachedAvatarTicket,
     evictDisplayName,
     copyToClipboard,
     linkify,
@@ -475,18 +475,23 @@
             {@const fallback =
               post.author === nodeId ? "You" : shortId(post.author)}
             <a href="/user/{post.author}" class="author-link">
-              <div class="avatar" style="background:{avatarColor(post.author)}">
-                {getInitials(fallback, post.author === nodeId)}
-              </div>
+              <Avatar
+                pubkey={post.author}
+                name={fallback}
+                isSelf={post.author === nodeId}
+              />
               <span class="author" class:self={post.author === nodeId}>
                 {fallback}
               </span>
             </a>
           {:then name}
             <a href="/user/{post.author}" class="author-link">
-              <div class="avatar" style="background:{avatarColor(post.author)}">
-                {getInitials(name, post.author === nodeId)}
-              </div>
+              <Avatar
+                pubkey={post.author}
+                {name}
+                isSelf={post.author === nodeId}
+                ticket={getCachedAvatarTicket(post.author)}
+              />
               <span class="author" class:self={post.author === nodeId}>
                 {name}
               </span>
@@ -893,20 +898,6 @@
 
   .author-link:hover .author {
     text-decoration: underline;
-  }
-
-  .avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: white;
-    flex-shrink: 0;
-    text-transform: uppercase;
   }
 
   .delete-btn {
