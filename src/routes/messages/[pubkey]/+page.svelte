@@ -36,7 +36,7 @@
         limit: 50,
         before: null,
       });
-      messages = msgs.reverse();
+      messages = msgs;
       hasMore = msgs.length >= 50;
       loading = false;
 
@@ -78,7 +78,7 @@
         hasMore = false;
       } else {
         const prevHeight = messagesContainer?.scrollHeight ?? 0;
-        messages = [...olderMsgs.reverse(), ...messages];
+        messages = [...olderMsgs, ...messages];
         hasMore = olderMsgs.length >= 50;
         requestAnimationFrame(() => {
           if (messagesContainer) {
