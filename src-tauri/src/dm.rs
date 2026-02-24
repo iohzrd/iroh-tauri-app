@@ -87,17 +87,11 @@ impl DmHandler {
         // Noise IK handshake: initiator
         let (initiator_hs, msg1) = noise_initiate(&self.my_x25519_private, &peer_x25519_public)
             .map_err(|e| anyhow::anyhow!("noise init: {e}"))?;
-        println!(
-            "[dm] noise init message created ({} bytes)",
-            msg1.len()
-        );
+        println!("[dm] noise init message created ({} bytes)", msg1.len());
 
         // Connect and perform handshake
         let addr = EndpointAddr::from(peer_id);
-        println!(
-            "[dm] connecting to {} on DM_ALPN...",
-            short_id(peer_pubkey)
-        );
+        println!("[dm] connecting to {} on DM_ALPN...", short_id(peer_pubkey));
         let conn = endpoint.connect(addr, DM_ALPN).await.map_err(|e| {
             eprintln!("[dm] QUIC connect failed to {}: {e}", short_id(peer_pubkey));
             e
@@ -152,12 +146,14 @@ impl DmHandler {
 
     /// Send a DM to a peer. Encrypts with Double Ratchet and sends over QUIC.
     /// If the peer is offline, queues to outbox.
+    /// On successful delivery, marks the message as delivered and emits `dm-delivered`.
     pub async fn send_dm(
         &self,
         endpoint: &Endpoint,
         peer_pubkey: &str,
         message: DirectMessage,
     ) -> anyhow::Result<()> {
+        let message_id = message.id.clone();
         let mut ratchet = self.get_or_establish_session(endpoint, peer_pubkey).await?;
 
         // Encrypt the message
@@ -183,6 +179,7 @@ impl DmHandler {
         {
             Ok(()) => {
                 println!("[dm] sent message to {}", short_id(peer_pubkey));
+                self.mark_delivered(&message_id);
             }
             Err(e) => {
                 println!(
@@ -196,11 +193,27 @@ impl DmHandler {
                     peer_pubkey,
                     &envelope_json,
                     now_millis(),
+                    &message_id,
                 )?;
             }
         }
 
         Ok(())
+    }
+
+    /// Mark a message as delivered in storage and notify the frontend.
+    fn mark_delivered(&self, message_id: &str) {
+        if let Err(e) = self.storage.mark_dm_delivered(message_id) {
+            eprintln!(
+                "[dm] failed to mark delivered {}: {e}",
+                short_id(message_id)
+            );
+            return;
+        }
+        let _ = self.app_handle.emit(
+            "dm-delivered",
+            serde_json::json!({ "message_id": message_id }),
+        );
     }
 
     /// Try to send an encrypted envelope to a peer over QUIC.
@@ -253,7 +266,7 @@ impl DmHandler {
         let mut sent = 0u32;
         let mut failed = 0u32;
 
-        for (id, envelope_json) in &entries {
+        for (id, envelope_json, message_id) in &entries {
             let envelope: EncryptedEnvelope = match serde_json::from_str(envelope_json) {
                 Ok(e) => e,
                 Err(_) => {
@@ -269,6 +282,7 @@ impl DmHandler {
             {
                 Ok(()) => {
                     self.storage.remove_outbox_message(id)?;
+                    self.mark_delivered(message_id);
                     sent += 1;
                 }
                 Err(_) => {

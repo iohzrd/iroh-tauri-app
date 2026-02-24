@@ -27,6 +27,10 @@ impl Storage {
             "003_direct_messages",
             include_str!("../migrations/003_direct_messages.sql"),
         ),
+        (
+            "004_outbox_message_id",
+            include_str!("../migrations/004_outbox_message_id.sql"),
+        ),
     ];
 
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
@@ -534,25 +538,36 @@ impl Storage {
         peer_pubkey: &str,
         envelope_json: &str,
         created_at: u64,
+        message_id: &str,
     ) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
         db.execute(
-            "INSERT INTO dm_outbox (id, peer_pubkey, envelope_json, created_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![id, peer_pubkey, envelope_json, created_at as i64],
+            "INSERT INTO dm_outbox (id, peer_pubkey, envelope_json, created_at, message_id)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                id,
+                peer_pubkey,
+                envelope_json,
+                created_at as i64,
+                message_id
+            ],
         )?;
         Ok(())
     }
 
-    pub fn get_outbox_for_peer(&self, peer_pubkey: &str) -> anyhow::Result<Vec<(String, String)>> {
+    /// Returns (outbox_id, envelope_json, message_id) tuples.
+    pub fn get_outbox_for_peer(
+        &self,
+        peer_pubkey: &str,
+    ) -> anyhow::Result<Vec<(String, String, String)>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare(
-            "SELECT id, envelope_json FROM dm_outbox WHERE peer_pubkey=?1 ORDER BY created_at ASC",
+            "SELECT id, envelope_json, message_id FROM dm_outbox WHERE peer_pubkey=?1 ORDER BY created_at ASC",
         )?;
         let mut rows = stmt.query(params![peer_pubkey])?;
         let mut entries = Vec::new();
         while let Some(row) = rows.next()? {
-            entries.push((row.get(0)?, row.get(1)?));
+            entries.push((row.get(0)?, row.get(1)?, row.get(2)?));
         }
         Ok(entries)
     }

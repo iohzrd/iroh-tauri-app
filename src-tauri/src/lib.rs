@@ -550,13 +550,10 @@ async fn send_dm(
             eprintln!("[dm-cmd] upsert_conversation error: {e}");
             e.to_string()
         })?;
-    state
-        .storage
-        .insert_dm_message(&stored)
-        .map_err(|e| {
-            eprintln!("[dm-cmd] insert_dm_message error: {e}");
-            e.to_string()
-        })?;
+    state.storage.insert_dm_message(&stored).map_err(|e| {
+        eprintln!("[dm-cmd] insert_dm_message error: {e}");
+        e.to_string()
+    })?;
 
     println!("[dm-cmd] stored message {} locally", short_id(&msg_id));
 
@@ -579,7 +576,10 @@ async fn send_dm(
 async fn get_conversations(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ConversationMeta>, String> {
-    let convos = state.storage.get_conversations().map_err(|e| e.to_string())?;
+    let convos = state
+        .storage
+        .get_conversations()
+        .map_err(|e| e.to_string())?;
     println!("[dm-cmd] get_conversations: {} conversations", convos.len());
     Ok(convos)
 }
