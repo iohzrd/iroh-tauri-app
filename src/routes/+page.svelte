@@ -10,6 +10,7 @@
     shortId,
     getDisplayName,
     getCachedAvatarTicket,
+    seedOwnProfile,
     evictDisplayName,
     copyToClipboard,
     linkify,
@@ -85,6 +86,7 @@
   async function init() {
     try {
       nodeId = await invoke("get_node_id");
+      await seedOwnProfile(nodeId);
       await loadFeed();
       loading = false;
     } catch {
@@ -479,6 +481,7 @@
                 pubkey={post.author}
                 name={fallback}
                 isSelf={post.author === nodeId}
+                ticket={getCachedAvatarTicket(post.author)}
               />
               <span class="author" class:self={post.author === nodeId}>
                 {fallback}

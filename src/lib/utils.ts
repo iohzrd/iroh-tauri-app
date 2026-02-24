@@ -76,6 +76,18 @@ export function getCachedAvatarTicket(pubkey: string): string | null {
   return profileCache.get(pubkey)?.avatarTicket ?? null;
 }
 
+export async function seedOwnProfile(pubkey: string): Promise<void> {
+  try {
+    const profile = (await invoke("get_my_profile")) as Profile | null;
+    profileCache.set(pubkey, {
+      name: "You",
+      avatarTicket: profile?.avatar_ticket ?? null,
+    });
+  } catch {
+    // ignore
+  }
+}
+
 export async function copyToClipboard(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }
