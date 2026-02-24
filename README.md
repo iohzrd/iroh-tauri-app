@@ -1,4 +1,4 @@
-# Iroh Social
+# Iroh Social (working title)
 
 A decentralized peer-to-peer social network built with [Iroh](https://iroh.computer/), [Tauri 2](https://tauri.app/), and [SvelteKit 5](https://svelte.dev/).
 
