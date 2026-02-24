@@ -2,7 +2,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import type { Profile } from "$lib/types";
-  import { avatarColor, getInitials, copyToClipboard } from "$lib/utils";
+  import {
+    avatarColor,
+    getInitials,
+    copyToClipboard,
+    detectImageMime,
+  } from "$lib/utils";
 
   let nodeId = $state("");
   let displayName = $state("");
@@ -17,6 +22,16 @@
   let copyFeedback = $state(false);
   let fileInput = $state<HTMLInputElement>(null!);
 
+  // Dirty-state tracking: saved values from last load/save
+  let savedDisplayName = $state("");
+  let savedBio = $state("");
+  let savedAvatarHash = $state<string | null>(null);
+  let isDirty = $derived(
+    displayName !== savedDisplayName ||
+      bio !== savedBio ||
+      avatarHash !== savedAvatarHash,
+  );
+
   async function copyNodeId() {
     await copyToClipboard(nodeId);
     copyFeedback = true;
@@ -26,7 +41,8 @@
   async function loadAvatarPreview(ticket: string) {
     try {
       const bytes: number[] = await invoke("fetch_blob_bytes", { ticket });
-      const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+      const data = new Uint8Array(bytes);
+      const blob = new Blob([data], { type: detectImageMime(data) });
       avatarPreview = URL.createObjectURL(blob);
     } catch (e) {
       console.error("Failed to load avatar:", e);
@@ -42,6 +58,9 @@
         bio = profile.bio;
         avatarHash = profile.avatar_hash;
         avatarTicket = profile.avatar_ticket;
+        savedDisplayName = profile.display_name;
+        savedBio = profile.bio;
+        savedAvatarHash = profile.avatar_hash;
         if (profile.avatar_ticket) {
           await loadAvatarPreview(profile.avatar_ticket);
         }
@@ -87,6 +106,8 @@
 
   async function save() {
     saving = true;
+    displayName = displayName.trim();
+    bio = bio.trim();
     try {
       await invoke("save_my_profile", {
         displayName,
@@ -94,6 +115,9 @@
         avatarHash,
         avatarTicket,
       });
+      savedDisplayName = displayName;
+      savedBio = bio;
+      savedAvatarHash = avatarHash;
       status = "Saved!";
       setTimeout(() => (status = ""), 2000);
     } catch (e) {
@@ -177,7 +201,7 @@
       ></textarea>
     </div>
 
-    <button class="save-btn" onclick={save} disabled={saving}>
+    <button class="save-btn" onclick={save} disabled={saving || !isDirty}>
       {saving ? "Saving..." : "Save Profile"}
     </button>
 

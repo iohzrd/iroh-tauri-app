@@ -8,7 +8,7 @@ const AVATAR_COLORS = [
   "#d97706",
   "#dc2626",
   "#db2777",
-  "#7c3aed",
+  "#4f46e5",
   "#0891b2",
 ];
 
@@ -135,4 +135,18 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / 1048576).toFixed(1) + " MB";
+}
+
+export function detectImageMime(data: Uint8Array): string {
+  if (data[0] === 0x89 && data[1] === 0x50) return "image/png";
+  if (data[0] === 0xff && data[1] === 0xd8) return "image/jpeg";
+  if (data[0] === 0x47 && data[1] === 0x49) return "image/gif";
+  if (
+    data[0] === 0x52 &&
+    data[1] === 0x49 &&
+    data[8] === 0x57 &&
+    data[9] === 0x45
+  )
+    return "image/webp";
+  return "image/png";
 }

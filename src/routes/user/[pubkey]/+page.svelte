@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
@@ -73,6 +74,32 @@
       loading = false;
     } catch {
       setTimeout(init, 500);
+    }
+  }
+
+  async function reloadPosts() {
+    try {
+      const newPosts: Post[] = await invoke("get_user_posts", {
+        pubkey,
+        limit: 50,
+        before: null,
+      });
+      posts = newPosts;
+      hasMore = newPosts.length >= 50;
+    } catch (e) {
+      console.error("Failed to reload posts:", e);
+    }
+  }
+
+  async function reloadProfile() {
+    try {
+      if (isSelf) {
+        profile = await invoke("get_my_profile");
+      } else {
+        profile = await invoke("get_remote_profile", { pubkey });
+      }
+    } catch (e) {
+      console.error("Failed to reload profile:", e);
     }
   }
 
@@ -170,9 +197,23 @@
 
   onMount(() => {
     init();
+    const unlisteners: Promise<UnlistenFn>[] = [];
+    unlisteners.push(
+      listen("feed-updated", () => {
+        reloadPosts();
+      }),
+    );
+    unlisteners.push(
+      listen("profile-updated", (event) => {
+        if (event.payload === pubkey) {
+          reloadProfile();
+        }
+      }),
+    );
     return () => {
       scrollObserver?.disconnect();
       revokeAllBlobUrls();
+      unlisteners.forEach((p) => p.then((fn) => fn()));
     };
   });
 </script>
@@ -229,7 +270,9 @@
     </button>
   {/if}
 
-  <h3 class="section-title">Posts ({posts.length})</h3>
+  <h3 class="section-title">
+    Posts{posts.length > 0 ? ` (${posts.length}${hasMore ? "+" : ""})` : ""}
+  </h3>
 
   <div class="feed">
     {#each posts as post (post.id)}

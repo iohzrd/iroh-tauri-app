@@ -6,7 +6,10 @@ use iroh_gossip::{
     Gossip,
     api::{Event, GossipSender},
 };
-use iroh_social_types::{GossipMessage, Post, Profile, now_millis, user_feed_topic, validate_post};
+use iroh_social_types::{
+    GossipMessage, Post, Profile, now_millis, short_id, user_feed_topic, validate_post,
+    validate_profile,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -41,7 +44,7 @@ impl FeedManager {
     pub async fn start_own_feed(&mut self) -> anyhow::Result<()> {
         let my_id = self.endpoint.id().to_string();
         let topic = user_feed_topic(&my_id);
-        println!("[gossip] starting own feed topic for {}", &my_id[..8]);
+        println!("[gossip] starting own feed topic for {}", short_id(&my_id));
 
         let topic_handle = self.gossip.subscribe(topic, vec![]).await?;
         let (sender, receiver) = topic_handle.split();
@@ -58,7 +61,7 @@ impl FeedManager {
                     Ok(Some(event)) => match &event {
                         Event::NeighborUp(endpoint_id) => {
                             let pubkey = endpoint_id.to_string();
-                            println!("[gossip-own] new follower: {}", &pubkey[..8]);
+                            println!("[gossip-own] new follower: {}", short_id(&pubkey));
                             let now = now_millis();
                             match storage.upsert_follower(&pubkey, now) {
                                 Ok(is_new) => {
@@ -74,7 +77,7 @@ impl FeedManager {
                         }
                         Event::NeighborDown(endpoint_id) => {
                             let pubkey = endpoint_id.to_string();
-                            println!("[gossip-own] follower left: {}", &pubkey[..8]);
+                            println!("[gossip-own] follower left: {}", short_id(&pubkey));
                             if let Err(e) = storage.set_follower_offline(&pubkey) {
                                 eprintln!("[gossip-own] failed to update follower: {e}");
                             }
@@ -145,7 +148,7 @@ impl FeedManager {
 
     pub async fn follow_user(&mut self, pubkey: String) -> anyhow::Result<()> {
         if self.subscriptions.contains_key(&pubkey) {
-            println!("[gossip] already subscribed to {}", &pubkey[..8]);
+            println!("[gossip] already subscribed to {}", short_id(&pubkey));
             return Ok(());
         }
 
@@ -154,18 +157,18 @@ impl FeedManager {
 
         println!(
             "[gossip] subscribing to {} (topic: {})",
-            &pubkey[..8],
+            short_id(&pubkey),
             &format!("{:?}", topic)[..12]
         );
         let topic_handle = self.gossip.subscribe(topic, vec![bootstrap]).await?;
         let (sender, receiver) = topic_handle.split();
-        println!("[gossip] subscribed to {}", &pubkey[..8]);
+        println!("[gossip] subscribed to {}", short_id(&pubkey));
 
         let storage = self.storage.clone();
         let pk = pubkey.clone();
         let app_handle = self.app_handle.clone();
         let handle = tokio::spawn(async move {
-            println!("[gossip-rx] listener started for {}", &pk[..8]);
+            println!("[gossip-rx] listener started for {}", short_id(&pk));
             let mut receiver = receiver;
             loop {
                 match receiver.try_next().await {
@@ -174,7 +177,7 @@ impl FeedManager {
                             println!(
                                 "[gossip-rx] received {} bytes from {}",
                                 msg.content.len(),
-                                &pk[..8]
+                                short_id(&pk)
                             );
                             match serde_json::from_slice(&msg.content) {
                                 Ok(GossipMessage::NewPost(post)) => {
@@ -183,13 +186,13 @@ impl FeedManager {
                                             eprintln!(
                                                 "[gossip-rx] rejected post {} from {}: {reason}",
                                                 &post.id,
-                                                &pk[..8]
+                                                short_id(&pk)
                                             );
                                         } else {
                                             println!(
                                                 "[gossip-rx] new post {} from {}",
                                                 &post.id,
-                                                &pk[..8]
+                                                short_id(&pk)
                                             );
                                             if let Err(e) = storage.insert_post(&post) {
                                                 eprintln!("[gossip-rx] failed to store post: {e}");
@@ -199,8 +202,8 @@ impl FeedManager {
                                     } else {
                                         println!(
                                             "[gossip-rx] ignored post from {} (expected {})",
-                                            &post.author[..8],
-                                            &pk[..8]
+                                            short_id(&post.author),
+                                            short_id(&pk)
                                         );
                                     }
                                 }
@@ -211,7 +214,7 @@ impl FeedManager {
                                             Ok(Some(post)) if post.author == pk => {
                                                 println!(
                                                     "[gossip-rx] delete post {id} from {}",
-                                                    &pk[..8]
+                                                    short_id(&pk)
                                                 );
                                                 if let Err(e) = storage.delete_post(&id) {
                                                     eprintln!(
@@ -237,15 +240,22 @@ impl FeedManager {
                                     }
                                 }
                                 Ok(GossipMessage::ProfileUpdate(profile)) => {
-                                    println!(
-                                        "[gossip-rx] profile update from {}: {}",
-                                        &pk[..8],
-                                        profile.display_name
-                                    );
-                                    if let Err(e) = storage.save_remote_profile(&pk, &profile) {
-                                        eprintln!("[gossip-rx] failed to store profile: {e}");
+                                    if let Err(reason) = validate_profile(&profile) {
+                                        eprintln!(
+                                            "[gossip-rx] rejected profile from {}: {reason}",
+                                            short_id(&pk)
+                                        );
+                                    } else {
+                                        println!(
+                                            "[gossip-rx] profile update from {}: {}",
+                                            short_id(&pk),
+                                            profile.display_name
+                                        );
+                                        if let Err(e) = storage.save_remote_profile(&pk, &profile) {
+                                            eprintln!("[gossip-rx] failed to store profile: {e}");
+                                        }
+                                        let _ = app_handle.emit("profile-updated", &pk);
                                     }
-                                    let _ = app_handle.emit("profile-updated", &pk);
                                 }
                                 Err(e) => {
                                     eprintln!("[gossip-rx] failed to parse message: {e}");
@@ -253,20 +263,20 @@ impl FeedManager {
                             }
                         }
                         other => {
-                            println!("[gossip-rx] event from {}: {other:?}", &pk[..8]);
+                            println!("[gossip-rx] event from {}: {other:?}", short_id(&pk));
                         }
                     },
                     Ok(None) => {
-                        println!("[gossip-rx] stream ended for {}", &pk[..8]);
+                        println!("[gossip-rx] stream ended for {}", short_id(&pk));
                         break;
                     }
                     Err(e) => {
-                        eprintln!("[gossip-rx] receiver error for {}: {e}", &pk[..8]);
+                        eprintln!("[gossip-rx] receiver error for {}: {e}", short_id(&pk));
                         break;
                     }
                 }
             }
-            println!("[gossip-rx] listener stopped for {}", &pk[..8]);
+            println!("[gossip-rx] listener stopped for {}", short_id(&pk));
         });
 
         self.subscriptions.insert(pubkey, (sender, handle));
@@ -275,7 +285,7 @@ impl FeedManager {
 
     pub fn unfollow_user(&mut self, pubkey: &str) {
         if let Some((_sender, handle)) = self.subscriptions.remove(pubkey) {
-            println!("[gossip] unsubscribed from {}", &pubkey[..8]);
+            println!("[gossip] unsubscribed from {}", short_id(pubkey));
             handle.abort();
         }
     }

@@ -4,7 +4,7 @@ use iroh::{
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
 };
-use iroh_social_types::{Post, Profile, SyncRequest, SyncResponse};
+use iroh_social_types::{Post, Profile, SyncRequest, SyncResponse, short_id};
 use std::sync::Arc;
 
 pub use iroh_social_types::SYNC_ALPN;
@@ -25,7 +25,7 @@ impl ProtocolHandler for SyncHandler {
         let remote = conn.remote_id();
         println!(
             "[sync-server] incoming sync request from {}",
-            &remote.to_string()[..8]
+            short_id(&remote.to_string())
         );
 
         let (mut send, mut recv) = conn.accept_bi().await?;
@@ -38,7 +38,7 @@ impl ProtocolHandler for SyncHandler {
         let req: SyncRequest = serde_json::from_slice(&req_bytes).map_err(AcceptError::from_err)?;
         println!(
             "[sync-server] request: author={}, before={:?}, limit={}",
-            &req.author[..8],
+            short_id(&req.author),
             req.before,
             req.limit
         );
@@ -55,7 +55,7 @@ impl ProtocolHandler for SyncHandler {
             "[sync-server] responding with {} posts (profile: {}) to {}",
             posts.len(),
             profile.as_ref().map_or("none", |p| &p.display_name),
-            &remote.to_string()[..8]
+            short_id(&remote.to_string())
         );
 
         let resp = SyncResponse { posts, profile };
@@ -68,7 +68,7 @@ impl ProtocolHandler for SyncHandler {
 
         println!(
             "[sync-server] sent response, waiting for peer to close connection {}",
-            &remote.to_string()[..8]
+            short_id(&remote.to_string())
         );
 
         // Wait for the peer to close the connection.
@@ -78,7 +78,7 @@ impl ProtocolHandler for SyncHandler {
 
         println!(
             "[sync-server] completed sync for {}",
-            &remote.to_string()[..8]
+            short_id(&remote.to_string())
         );
 
         Ok(())
@@ -94,13 +94,16 @@ pub async fn fetch_remote_posts(
     limit: u32,
 ) -> anyhow::Result<(Vec<Post>, Option<Profile>)> {
     let addr = EndpointAddr::from(target);
-    println!("[sync-client] connecting to {} for posts...", &author[..8]);
+    println!(
+        "[sync-client] connecting to {} for posts...",
+        short_id(author)
+    );
     let start = std::time::Instant::now();
     let conn = match endpoint.connect(addr, SYNC_ALPN).await {
         Ok(c) => {
             println!(
                 "[sync-client] connected to {} in {:.1}s (remote: {})",
-                &author[..8],
+                short_id(author),
                 start.elapsed().as_secs_f64(),
                 c.remote_id()
             );
@@ -109,7 +112,7 @@ pub async fn fetch_remote_posts(
         Err(e) => {
             eprintln!(
                 "[sync-client] failed to connect to {} after {:.1}s: {e:?}",
-                &author[..8],
+                short_id(author),
                 start.elapsed().as_secs_f64()
             );
             return Err(e.into());
@@ -119,7 +122,7 @@ pub async fn fetch_remote_posts(
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| {
         eprintln!(
             "[sync-client] failed to open bi-stream to {}: {e:?}",
-            &author[..8]
+            short_id(author)
         );
         e
     })?;
@@ -137,7 +140,7 @@ pub async fn fetch_remote_posts(
     let resp_bytes = recv.read_to_end(1_048_576).await.map_err(|e| {
         eprintln!(
             "[sync-client] failed to read response from {}: {e:?}",
-            &author[..8]
+            short_id(author)
         );
         e
     })?; // 1MB max
@@ -147,7 +150,7 @@ pub async fn fetch_remote_posts(
         "[sync-client] received {} posts (profile: {}) from {} in {:.1}s",
         resp.posts.len(),
         resp.profile.as_ref().map_or("none", |p| &p.display_name),
-        &author[..8],
+        short_id(author),
         start.elapsed().as_secs_f64()
     );
 

@@ -9,7 +9,7 @@ use iroh_blobs::{BlobsProtocol, HashAndFormat, store::fs::FsStore, ticket::BlobT
 use iroh_gossip::Gossip;
 use iroh_social_types::{
     FollowEntry, FollowerEntry, MAX_BLOB_SIZE, MediaAttachment, Post, Profile, now_millis,
-    validate_post,
+    short_id, validate_post, validate_profile,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -54,6 +54,7 @@ async fn save_my_profile(
         avatar_hash,
         avatar_ticket,
     };
+    validate_profile(&profile)?;
     state
         .storage
         .save_profile(&profile)
@@ -185,7 +186,7 @@ async fn sync_posts(
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
 
-    println!("[sync] requesting posts from {}...", &pubkey[..8]);
+    println!("[sync] requesting posts from {}...", short_id(&pubkey));
     let (posts, profile) =
         sync::fetch_remote_posts(&endpoint, target, &pubkey, before, limit.unwrap_or(20))
             .await
@@ -194,7 +195,7 @@ async fn sync_posts(
     println!(
         "[sync] received {} posts from {}",
         posts.len(),
-        &pubkey[..8]
+        short_id(&pubkey)
     );
 
     // Store fetched posts and profile locally
@@ -220,7 +221,11 @@ async fn sync_posts(
 
 #[tauri::command]
 async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
-    println!("[follow] following {}...", &pubkey[..8]);
+    let my_id = state.endpoint.id().to_string();
+    if pubkey == my_id {
+        return Err("cannot follow yourself".to_string());
+    }
+    println!("[follow] following {}...", short_id(&pubkey));
     let entry = FollowEntry {
         pubkey: pubkey.clone(),
         alias: None,
@@ -234,10 +239,10 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
             .await
             .map_err(|e| e.to_string())?;
     }
-    println!("[follow] subscribed to gossip for {}", &pubkey[..8]);
+    println!("[follow] subscribed to gossip for {}", short_id(&pubkey));
 
     // Sync existing posts from the followed user (lock dropped, no blocking)
-    println!("[follow] syncing posts from {}...", &pubkey[..8]);
+    println!("[follow] syncing posts from {}...", short_id(&pubkey));
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
@@ -260,11 +265,14 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
             println!(
                 "[follow-sync] synced {} posts from {}",
                 posts.len(),
-                &pubkey[..8]
+                short_id(&pubkey)
             );
         }
         Err(e) => {
-            eprintln!("[follow-sync] failed to sync from {}: {e}", &pubkey[..8]);
+            eprintln!(
+                "[follow-sync] failed to sync from {}: {e}",
+                short_id(&pubkey)
+            );
         }
     }
 
@@ -273,11 +281,11 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
 
 #[tauri::command]
 async fn unfollow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
-    println!("[follow] unfollowing {}...", &pubkey[..8]);
+    println!("[follow] unfollowing {}...", short_id(&pubkey));
     state.storage.unfollow(&pubkey).map_err(|e| e.to_string())?;
     let mut feed = state.feed.lock().await;
     feed.unfollow_user(&pubkey);
-    println!("[follow] unfollowed {}", &pubkey[..8]);
+    println!("[follow] unfollowed {}", short_id(&pubkey));
     Ok(())
 }
 
@@ -503,7 +511,7 @@ async fn sync_one_follow(
     for attempt in 1..=3 {
         println!(
             "[startup-sync] syncing from {} (attempt {}/3)...",
-            &pubkey[..8],
+            short_id(pubkey),
             attempt
         );
         let start = std::time::Instant::now();
@@ -532,7 +540,7 @@ async fn sync_one_follow(
                 println!(
                     "[startup-sync] synced {} posts from {} in {:.1}s",
                     posts.len(),
-                    &pubkey[..8],
+                    short_id(pubkey),
                     elapsed.as_secs_f64()
                 );
                 return;
@@ -540,14 +548,14 @@ async fn sync_one_follow(
             Ok(Err(e)) => {
                 eprintln!(
                     "[startup-sync] attempt {attempt} failed for {} after {:.1}s: {e:?}",
-                    &pubkey[..8],
+                    short_id(pubkey),
                     elapsed.as_secs_f64()
                 );
             }
             Err(_) => {
                 eprintln!(
                     "[startup-sync] attempt {attempt} timed out for {} after {:.1}s",
-                    &pubkey[..8],
+                    short_id(pubkey),
                     elapsed.as_secs_f64()
                 );
             }
@@ -555,7 +563,10 @@ async fn sync_one_follow(
 
         if attempt < 3 {
             let delay = attempt as u64 * 5;
-            println!("[startup-sync] retrying {} in {delay}s...", &pubkey[..8]);
+            println!(
+                "[startup-sync] retrying {} in {delay}s...",
+                short_id(pubkey)
+            );
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
         }
     }
@@ -648,11 +659,14 @@ pub fn run() {
                 }
 
                 for f in &follows {
-                    println!("[setup] resubscribing to {}...", &f.pubkey[..8]);
+                    println!("[setup] resubscribing to {}...", short_id(&f.pubkey));
                     if let Err(e) = feed.follow_user(f.pubkey.clone()).await {
-                        eprintln!("[setup] failed to resubscribe to {}: {e}", &f.pubkey[..8]);
+                        eprintln!(
+                            "[setup] failed to resubscribe to {}: {e}",
+                            short_id(&f.pubkey)
+                        );
                     } else {
-                        println!("[setup] resubscribed to {}", &f.pubkey[..8]);
+                        println!("[setup] resubscribed to {}", short_id(&f.pubkey));
                     }
                 }
 

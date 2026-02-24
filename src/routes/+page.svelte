@@ -19,7 +19,7 @@
     formatSize,
   } from "$lib/utils";
 
-  const MAX_POST_LENGTH = 500;
+  const MAX_POST_LENGTH = 10_000;
 
   let nodeId = $state("");
   let loading = $state(true);
@@ -282,6 +282,12 @@
     }
   }
 
+  function handleGlobalKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && pendingDeleteId) {
+      cancelDelete();
+    }
+  }
+
   function scrollToTop() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -348,11 +354,13 @@
     );
 
     window.addEventListener("scroll", handleScroll);
+    window.addEventListener("keydown", handleGlobalKey);
     document.addEventListener("visibilitychange", handleVisibility);
     startAutoSync();
     return () => {
       stopAutoSync();
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("keydown", handleGlobalKey);
       window.removeEventListener("scroll", handleScroll);
       unlisteners.forEach((p) => p.then((fn) => fn()));
       revokeAllBlobUrls();

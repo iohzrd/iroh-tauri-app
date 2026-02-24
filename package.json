@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "format": "prettier --plugin prettier-plugin-svelte --write 'src/**/*.{ts,svelte}'",
     "tauri": "tauri"
   },
   "license": "MIT",

@@ -96,6 +96,13 @@
     }
   }
 
+  function handleGlobalKey(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      if (pendingUnfollowPubkey) cancelUnfollow();
+      else if (editingAlias) editingAlias = null;
+    }
+  }
+
   async function saveAlias() {
     if (!editingAlias) return;
     try {
@@ -123,7 +130,9 @@
       }),
     );
 
+    window.addEventListener("keydown", handleGlobalKey);
     return () => {
+      window.removeEventListener("keydown", handleGlobalKey);
       unlisteners.forEach((p) => p.then((fn) => fn()));
     };
   });

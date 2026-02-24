@@ -74,6 +74,26 @@ Use `double-ratchet-rs` or implement on top of:
 - `chacha20poly1305` or `aes-gcm` -- AEAD symmetric encryption
 - `ed25519-dalek` -- Already in use; convert keys to X25519
 
+### Alternative: Noise Protocol for Session Establishment
+
+Consider using the Noise Protocol Framework (`snow` crate) for the session establishment step instead of a hand-rolled X3DH. The `IK` handshake pattern is a close match: the initiator already knows the responder's static key (their iroh public key), and both sides authenticate and derive a shared secret in a formally verified pattern. This is the approach Signal uses -- Noise for session setup, Double Ratchet for ongoing per-message encryption.
+
+Advantages over custom X3DH:
+- Battle-tested framework (used by WireGuard, Lightning Network, libp2p, WhatsApp)
+- Handles ephemeral key generation, DH computations, key derivation, and AEAD binding internally
+- Less surface area for cryptographic bugs
+- The `snow` crate is mature and already uses `x25519-dalek` + `chacha20poly1305` under the hood
+
+Usage would look roughly like:
+```rust
+let mut initiator = snow::Builder::new("Noise_IK_25519_ChaChaPoly_BLAKE2s".parse()?)
+    .local_private_key(&my_x25519_private)
+    .remote_public_key(&peer_x25519_public)
+    .build_initiator()?;
+```
+
+Noise does NOT replace the Double Ratchet -- it only covers session establishment. The Double Ratchet is still needed for per-message forward secrecy in long-lived conversations.
+
 ### Session Storage
 
 Each DM conversation stores:

@@ -24,7 +24,9 @@ impl Storage {
 
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let conn = Connection::open(path.as_ref())?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
+        )?;
         Self::run_migrations(&conn)?;
         Ok(Self {
             db: Mutex::new(conn),
@@ -98,7 +100,7 @@ impl Storage {
                 post.id,
                 post.author,
                 post.content,
-                post.timestamp,
+                post.timestamp as i64,
                 media_json
             ],
         )?;
@@ -125,7 +127,7 @@ impl Storage {
                     "SELECT id, author, content, timestamp, media_json FROM posts
                      WHERE timestamp < ?1 ORDER BY timestamp DESC LIMIT ?2",
                 )?;
-                let mut rows = stmt.query(params![b, limit])?;
+                let mut rows = stmt.query(params![b as i64, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
                 }
@@ -135,7 +137,7 @@ impl Storage {
                     "SELECT id, author, content, timestamp, media_json FROM posts
                      ORDER BY timestamp DESC LIMIT ?1",
                 )?;
-                let mut rows = stmt.query(params![limit])?;
+                let mut rows = stmt.query(params![limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
                 }
@@ -164,7 +166,7 @@ impl Storage {
                     "SELECT id, author, content, timestamp, media_json FROM posts
                      WHERE author=?1 AND timestamp < ?2 ORDER BY timestamp DESC LIMIT ?3",
                 )?;
-                let mut rows = stmt.query(params![author, b, limit])?;
+                let mut rows = stmt.query(params![author, b as i64, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
                 }
@@ -174,7 +176,7 @@ impl Storage {
                     "SELECT id, author, content, timestamp, media_json FROM posts
                      WHERE author=?1 ORDER BY timestamp DESC LIMIT ?2",
                 )?;
-                let mut rows = stmt.query(params![author, limit])?;
+                let mut rows = stmt.query(params![author, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
                 }
@@ -190,7 +192,7 @@ impl Storage {
             id: row.get(0)?,
             author: row.get(1)?,
             content: row.get(2)?,
-            timestamp: row.get(3)?,
+            timestamp: row.get::<_, i64>(3)? as u64,
             media,
         })
     }
@@ -238,7 +240,7 @@ impl Storage {
         db.execute(
             "INSERT INTO follows (pubkey, alias, followed_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(pubkey) DO UPDATE SET alias=?2, followed_at=?3",
-            params![entry.pubkey, entry.alias, entry.followed_at],
+            params![entry.pubkey, entry.alias, entry.followed_at as i64],
         )?;
         Ok(())
     }
@@ -260,14 +262,15 @@ impl Storage {
 
     pub fn get_follows(&self) -> anyhow::Result<Vec<FollowEntry>> {
         let db = self.db.lock().unwrap();
-        let mut stmt = db.prepare("SELECT pubkey, alias, followed_at FROM follows")?;
+        let mut stmt =
+            db.prepare("SELECT pubkey, alias, followed_at FROM follows ORDER BY followed_at DESC")?;
         let mut rows = stmt.query([])?;
         let mut follows = Vec::new();
         while let Some(row) = rows.next()? {
             follows.push(FollowEntry {
                 pubkey: row.get(0)?,
                 alias: row.get(1)?,
-                followed_at: row.get(2)?,
+                followed_at: row.get::<_, i64>(2)? as u64,
             });
         }
         Ok(follows)
@@ -286,7 +289,7 @@ impl Storage {
             "INSERT INTO followers (pubkey, first_seen, last_seen, is_online)
              VALUES (?1, ?2, ?2, 1)
              ON CONFLICT(pubkey) DO UPDATE SET last_seen=?2, is_online=1",
-            params![pubkey, now],
+            params![pubkey, now as i64],
         )?;
         Ok(!existing)
     }
@@ -303,14 +306,14 @@ impl Storage {
     pub fn get_followers(&self) -> anyhow::Result<Vec<FollowerEntry>> {
         let db = self.db.lock().unwrap();
         let mut stmt =
-            db.prepare("SELECT pubkey, first_seen, last_seen, is_online FROM followers")?;
+            db.prepare("SELECT pubkey, first_seen, last_seen, is_online FROM followers ORDER BY last_seen DESC")?;
         let mut rows = stmt.query([])?;
         let mut followers = Vec::new();
         while let Some(row) = rows.next()? {
             followers.push(FollowerEntry {
                 pubkey: row.get(0)?,
-                first_seen: row.get(1)?,
-                last_seen: row.get(2)?,
+                first_seen: row.get::<_, i64>(1)? as u64,
+                last_seen: row.get::<_, i64>(2)? as u64,
                 is_online: row.get::<_, i32>(3)? != 0,
             });
         }

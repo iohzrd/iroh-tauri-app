@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { avatarColor, getInitials } from "$lib/utils";
+  import { avatarColor, getInitials, detectImageMime } from "$lib/utils";
 
   interface Props {
     pubkey: string;
@@ -34,8 +34,9 @@
     const currentTicket = ticket;
     invoke("fetch_blob_bytes", { ticket: currentTicket })
       .then((bytes: unknown) => {
-        const blob = new Blob([new Uint8Array(bytes as number[])], {
-          type: "image/png",
+        const data = new Uint8Array(bytes as number[]);
+        const blob = new Blob([data], {
+          type: detectImageMime(data),
         });
         const url = URL.createObjectURL(blob);
         avatarBlobCache.set(currentTicket, url);
