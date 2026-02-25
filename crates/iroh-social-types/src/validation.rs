@@ -1,4 +1,4 @@
-use crate::types::{Post, Profile};
+use crate::types::{Interaction, Post, Profile};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAX_POST_CONTENT_LEN: usize = 10_000;
@@ -33,6 +33,17 @@ pub fn validate_profile(profile: &Profile) -> Result<(), String> {
             "bio too long: {} bytes (max {})",
             profile.bio.len(),
             MAX_BIO_LEN
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_interaction(interaction: &Interaction) -> Result<(), String> {
+    let now = now_millis();
+    if interaction.timestamp > now + MAX_TIMESTAMP_DRIFT_MS {
+        return Err(format!(
+            "interaction timestamp {} is too far in the future (now: {})",
+            interaction.timestamp, now
         ));
     }
     Ok(())

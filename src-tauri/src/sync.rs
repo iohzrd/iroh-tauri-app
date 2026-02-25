@@ -66,12 +66,19 @@ impl ProtocolHandler for SyncHandler {
             .get_author_post_range(&req.author)
             .map_err(map_err)?;
 
+        // Include interactions by this author
+        let interactions = self
+            .storage
+            .get_interactions_by_author(&req.author, req.limit as usize, req.before)
+            .map_err(map_err)?;
+
         // Include our own profile in the response
         let profile = self.storage.get_profile().ok().flatten();
 
         println!(
-            "[sync-server] responding with {} posts (total={}, profile: {}) to {}",
+            "[sync-server] responding with {} posts, {} interactions (total={}, profile: {}) to {}",
             posts.len(),
+            interactions.len(),
             total_count,
             profile.as_ref().map_or("none", |p| &p.display_name),
             short_id(&remote.to_string())
@@ -83,6 +90,7 @@ impl ProtocolHandler for SyncHandler {
             total_count,
             newest_ts,
             oldest_ts,
+            interactions,
         };
         let resp_bytes = serde_json::to_vec(&resp).map_err(AcceptError::from_err)?;
 

@@ -11,9 +11,10 @@ use iroh::{Endpoint, SecretKey, protocol::Router};
 use iroh_blobs::{BlobsProtocol, HashAndFormat, store::fs::FsStore, ticket::BlobTicket};
 use iroh_gossip::Gossip;
 use iroh_social_types::{
-    ConversationMeta, DM_ALPN, DirectMessage, FollowEntry, FollowerEntry, MAX_BLOB_SIZE,
-    MediaAttachment, Post, Profile, StoredMessage, now_millis, short_id, validate_post,
-    validate_profile,
+    ConversationMeta, DM_ALPN, DirectMessage, FollowEntry, FollowerEntry, Interaction,
+    InteractionKind, MAX_BLOB_SIZE, MediaAttachment, Post, Profile, StoredMessage, now_millis,
+    short_id, sign_interaction, sign_post, validate_interaction, validate_post, validate_profile,
+    verify_interaction_signature, verify_post_signature,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -28,6 +29,7 @@ pub struct AppState {
     pub storage: Arc<Storage>,
     pub feed: Arc<Mutex<FeedManager>>,
     pub dm: DmHandler,
+    pub secret_key_bytes: [u8; 32],
 }
 
 // -- Identity --
@@ -85,32 +87,42 @@ async fn get_remote_profile(
 
 // -- Posts --
 
+fn generate_id() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).expect("failed to generate random bytes");
+    let (a, b) = bytes.split_at(8);
+    format!(
+        "{:016x}{:016x}",
+        u64::from_le_bytes(a.try_into().unwrap()),
+        u64::from_le_bytes(b.try_into().unwrap())
+    )
+}
+
 #[tauri::command]
 async fn create_post(
     state: State<'_, Arc<AppState>>,
     content: String,
     media: Option<Vec<MediaAttachment>>,
+    reply_to: Option<String>,
+    reply_to_author: Option<String>,
 ) -> Result<Post, String> {
     let author = state.endpoint.id().to_string();
     let media_count = media.as_ref().map_or(0, |m| m.len());
-    let post = Post {
-        id: {
-            let mut bytes = [0u8; 16];
-            getrandom::fill(&mut bytes).expect("failed to generate random bytes");
-            let (a, b) = bytes.split_at(8);
-            format!(
-                "{:016x}{:016x}",
-                u64::from_le_bytes(a.try_into().unwrap()),
-                u64::from_le_bytes(b.try_into().unwrap())
-            )
-        },
+    let mut post = Post {
+        id: generate_id(),
         author,
         content,
         timestamp: now_millis(),
         media: media.unwrap_or_default(),
+        reply_to,
+        reply_to_author,
+        signature: String::new(),
     };
 
     validate_post(&post)?;
+
+    let sk = SecretKey::from_bytes(&state.secret_key_bytes);
+    sign_post(&mut post, &sk);
 
     state
         .storage
@@ -241,6 +253,10 @@ async fn sync_posts(
             eprintln!("[sync] rejected post {}: {reason}", &post.id);
             continue;
         }
+        if let Err(reason) = verify_post_signature(post) {
+            eprintln!("[sync] rejected post {} (bad sig): {reason}", &post.id);
+            continue;
+        }
         if let Err(e) = storage.insert_post(post) {
             eprintln!("[sync] failed to store post: {e}");
         }
@@ -249,6 +265,16 @@ async fn sync_posts(
         && let Err(e) = storage.save_remote_profile(&pubkey, profile)
     {
         eprintln!("[sync] failed to store profile: {e}");
+    }
+    for interaction in &resp.interactions {
+        if interaction.author != pubkey {
+            continue;
+        }
+        if validate_interaction(interaction).is_ok()
+            && verify_interaction_signature(interaction).is_ok()
+        {
+            let _ = storage.save_interaction(interaction);
+        }
     }
 
     Ok(SyncResult {
@@ -317,8 +343,24 @@ async fn fetch_older_posts(
             eprintln!("[remote-fetch] rejected post {}: {reason}", &post.id);
             continue;
         }
+        if let Err(reason) = verify_post_signature(post) {
+            eprintln!(
+                "[remote-fetch] rejected post {} (bad sig): {reason}",
+                &post.id
+            );
+            continue;
+        }
         if let Err(e) = storage.insert_post(post) {
             eprintln!("[remote-fetch] failed to store post: {e}");
+        }
+    }
+
+    for interaction in &resp.interactions {
+        if interaction.author == pubkey
+            && validate_interaction(interaction).is_ok()
+            && verify_interaction_signature(interaction).is_ok()
+        {
+            let _ = storage.save_interaction(interaction);
         }
     }
 
@@ -332,6 +374,131 @@ async fn fetch_older_posts(
         posts: resp.posts,
         remote_total: resp.total_count,
     })
+}
+
+// -- Interactions (likes/reposts) --
+
+#[tauri::command]
+async fn like_post(
+    state: State<'_, Arc<AppState>>,
+    target_post_id: String,
+    target_author: String,
+) -> Result<Interaction, String> {
+    let my_id = state.endpoint.id().to_string();
+    let mut interaction = Interaction {
+        id: generate_id(),
+        author: my_id,
+        kind: InteractionKind::Like,
+        target_post_id,
+        target_author,
+        timestamp: now_millis(),
+        signature: String::new(),
+    };
+    let sk = SecretKey::from_bytes(&state.secret_key_bytes);
+    sign_interaction(&mut interaction, &sk);
+    state
+        .storage
+        .save_interaction(&interaction)
+        .map_err(|e| e.to_string())?;
+    let feed = state.feed.lock().await;
+    feed.broadcast_interaction(&interaction)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(interaction)
+}
+
+#[tauri::command]
+async fn unlike_post(
+    state: State<'_, Arc<AppState>>,
+    target_post_id: String,
+) -> Result<(), String> {
+    let my_id = state.endpoint.id().to_string();
+    let id = state
+        .storage
+        .delete_interaction_by_target(&my_id, "Like", &target_post_id)
+        .map_err(|e| e.to_string())?;
+    if let Some(id) = id {
+        let feed = state.feed.lock().await;
+        feed.broadcast_delete_interaction(&id, &my_id)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn repost(
+    state: State<'_, Arc<AppState>>,
+    target_post_id: String,
+    target_author: String,
+) -> Result<Interaction, String> {
+    let my_id = state.endpoint.id().to_string();
+    let mut interaction = Interaction {
+        id: generate_id(),
+        author: my_id,
+        kind: InteractionKind::Repost,
+        target_post_id,
+        target_author,
+        timestamp: now_millis(),
+        signature: String::new(),
+    };
+    let sk = SecretKey::from_bytes(&state.secret_key_bytes);
+    sign_interaction(&mut interaction, &sk);
+    state
+        .storage
+        .save_interaction(&interaction)
+        .map_err(|e| e.to_string())?;
+    let feed = state.feed.lock().await;
+    feed.broadcast_interaction(&interaction)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(interaction)
+}
+
+#[tauri::command]
+async fn unrepost(state: State<'_, Arc<AppState>>, target_post_id: String) -> Result<(), String> {
+    let my_id = state.endpoint.id().to_string();
+    let id = state
+        .storage
+        .delete_interaction_by_target(&my_id, "Repost", &target_post_id)
+        .map_err(|e| e.to_string())?;
+    if let Some(id) = id {
+        let feed = state.feed.lock().await;
+        feed.broadcast_delete_interaction(&id, &my_id)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_post_counts(
+    state: State<'_, Arc<AppState>>,
+    target_post_id: String,
+) -> Result<storage::PostCounts, String> {
+    let my_id = state.endpoint.id().to_string();
+    state
+        .storage
+        .get_post_counts(&my_id, &target_post_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_replies(
+    state: State<'_, Arc<AppState>>,
+    target_post_id: String,
+    limit: Option<u32>,
+    before: Option<u64>,
+) -> Result<Vec<Post>, String> {
+    state
+        .storage
+        .get_replies(&target_post_id, limit.unwrap_or(50) as usize, before)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_post(state: State<'_, Arc<AppState>>, id: String) -> Result<Option<Post>, String> {
+    state.storage.get_post_by_id(&id).map_err(|e| e.to_string())
 }
 
 // -- Follows --
@@ -370,6 +537,13 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
                     eprintln!("[follow-sync] rejected post {}: {reason}", &post.id);
                     continue;
                 }
+                if let Err(reason) = verify_post_signature(post) {
+                    eprintln!(
+                        "[follow-sync] rejected post {} (bad sig): {reason}",
+                        &post.id
+                    );
+                    continue;
+                }
                 if let Err(e) = storage.insert_post(post) {
                     eprintln!("[follow-sync] failed to store post: {e}");
                 }
@@ -379,9 +553,18 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
             {
                 eprintln!("[follow-sync] failed to store profile: {e}");
             }
+            for interaction in &resp.interactions {
+                if interaction.author == pubkey
+                    && validate_interaction(interaction).is_ok()
+                    && verify_interaction_signature(interaction).is_ok()
+                {
+                    let _ = storage.save_interaction(interaction);
+                }
+            }
             println!(
-                "[follow-sync] synced {} posts from {} (total_remote={})",
+                "[follow-sync] synced {} posts, {} interactions from {} (total_remote={})",
                 resp.posts.len(),
+                resp.interactions.len(),
                 short_id(&pubkey),
                 resp.total_count
             );
@@ -831,18 +1014,34 @@ async fn sync_peer_posts(
                         eprintln!("[startup-sync] rejected post {}: {reason}", &post.id);
                         continue;
                     }
+                    if let Err(reason) = verify_post_signature(post) {
+                        eprintln!(
+                            "[startup-sync] rejected post {} (bad sig): {reason}",
+                            &post.id
+                        );
+                        continue;
+                    }
                     let _ = storage.insert_post(post);
                 }
                 if let Some(profile) = &resp.profile {
                     let _ = storage.save_remote_profile(pubkey, profile);
+                }
+                for interaction in &resp.interactions {
+                    if interaction.author == pubkey
+                        && validate_interaction(interaction).is_ok()
+                        && verify_interaction_signature(interaction).is_ok()
+                    {
+                        let _ = storage.save_interaction(interaction);
+                    }
                 }
 
                 if !resp.posts.is_empty() || resp.profile.is_some() {
                     let _ = handle.emit("feed-updated", ());
                 }
                 println!(
-                    "[startup-sync] synced {} posts from {} in {:.1}s (total_remote={})",
+                    "[startup-sync] synced {} posts, {} interactions from {} in {:.1}s (total_remote={})",
                     resp.posts.len(),
+                    resp.interactions.len(),
                     short_id(pubkey),
                     elapsed.as_secs_f64(),
                     resp.total_count
@@ -1103,15 +1302,31 @@ pub fn run() {
                                             );
                                             continue;
                                         }
+                                        if let Err(reason) = verify_post_signature(post) {
+                                            eprintln!(
+                                                "[drip-sync] rejected post {} (bad sig): {reason}",
+                                                &post.id
+                                            );
+                                            continue;
+                                        }
                                         let _ = drip_storage.insert_post(post);
+                                    }
+                                    for interaction in &resp.interactions {
+                                        if interaction.author == f.pubkey
+                                            && validate_interaction(interaction).is_ok()
+                                            && verify_interaction_signature(interaction).is_ok()
+                                        {
+                                            let _ = drip_storage.save_interaction(interaction);
+                                        }
                                     }
 
                                     any_work = true;
                                     let _ = drip_handle.emit("feed-updated", ());
 
                                     println!(
-                                        "[drip-sync] fetched {} older posts from {} (total_remote={})",
+                                        "[drip-sync] fetched {} older posts, {} interactions from {} (total_remote={})",
                                         resp.posts.len(),
+                                        resp.interactions.len(),
                                         short_id(&f.pubkey),
                                         resp.total_count
                                     );
@@ -1182,6 +1397,7 @@ pub fn run() {
                     storage: storage_clone,
                     feed: Arc::new(Mutex::new(feed)),
                     dm: dm_handler,
+                    secret_key_bytes,
                 });
 
                 handle.manage(state);
@@ -1202,6 +1418,13 @@ pub fn run() {
             sync_posts,
             get_sync_status,
             fetch_older_posts,
+            like_post,
+            unlike_post,
+            repost,
+            unrepost,
+            get_post_counts,
+            get_replies,
+            get_post,
             follow_user,
             unfollow_user,
             update_follow_alias,

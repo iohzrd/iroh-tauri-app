@@ -7,8 +7,9 @@ use iroh_gossip::{
     api::{Event, GossipSender},
 };
 use iroh_social_types::{
-    GossipMessage, Post, Profile, now_millis, short_id, user_feed_topic, validate_post,
-    validate_profile,
+    GossipMessage, Interaction, Post, Profile, now_millis, short_id, user_feed_topic,
+    validate_interaction, validate_post, validate_profile, verify_interaction_signature,
+    verify_post_signature,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -146,6 +147,40 @@ impl FeedManager {
         Ok(())
     }
 
+    pub async fn broadcast_interaction(&self, interaction: &Interaction) -> anyhow::Result<()> {
+        let sender = self
+            .my_sender
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("own feed not started"))?;
+
+        let msg = GossipMessage::NewInteraction(interaction.clone());
+        let payload = serde_json::to_vec(&msg)?;
+        sender.broadcast(Bytes::from(payload)).await?;
+        println!(
+            "[gossip] broadcast {:?} on post {}",
+            interaction.kind, &interaction.target_post_id
+        );
+
+        Ok(())
+    }
+
+    pub async fn broadcast_delete_interaction(&self, id: &str, author: &str) -> anyhow::Result<()> {
+        let sender = self
+            .my_sender
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("own feed not started"))?;
+
+        let msg = GossipMessage::DeleteInteraction {
+            id: id.to_string(),
+            author: author.to_string(),
+        };
+        let payload = serde_json::to_vec(&msg)?;
+        sender.broadcast(Bytes::from(payload)).await?;
+        println!("[gossip] broadcast delete interaction {id}");
+
+        Ok(())
+    }
+
     pub async fn follow_user(&mut self, pubkey: String) -> anyhow::Result<()> {
         if self.subscriptions.contains_key(&pubkey) {
             println!("[gossip] already subscribed to {}", short_id(&pubkey));
@@ -188,9 +223,15 @@ impl FeedManager {
                                                 &post.id,
                                                 short_id(&pk)
                                             );
+                                        } else if let Err(reason) = verify_post_signature(&post) {
+                                            eprintln!(
+                                                "[gossip-rx] rejected post {} from {} (bad sig): {reason}",
+                                                &post.id,
+                                                short_id(&pk)
+                                            );
                                         } else {
                                             println!(
-                                                "[gossip-rx] new post {} from {}",
+                                                "[gossip-rx] new post {} from {} (sig verified)",
                                                 &post.id,
                                                 short_id(&pk)
                                             );
@@ -255,6 +296,56 @@ impl FeedManager {
                                             eprintln!("[gossip-rx] failed to store profile: {e}");
                                         }
                                         let _ = app_handle.emit("profile-updated", &pk);
+                                    }
+                                }
+                                Ok(GossipMessage::NewInteraction(interaction)) => {
+                                    if interaction.author == pk {
+                                        if let Err(reason) = validate_interaction(&interaction) {
+                                            eprintln!(
+                                                "[gossip-rx] rejected interaction {} from {}: {reason}",
+                                                &interaction.id,
+                                                short_id(&pk)
+                                            );
+                                        } else if let Err(reason) =
+                                            verify_interaction_signature(&interaction)
+                                        {
+                                            eprintln!(
+                                                "[gossip-rx] rejected interaction {} from {} (bad sig): {reason}",
+                                                &interaction.id,
+                                                short_id(&pk)
+                                            );
+                                        } else {
+                                            println!(
+                                                "[gossip-rx] {:?} from {} on post {} (sig verified)",
+                                                interaction.kind,
+                                                short_id(&pk),
+                                                short_id(&interaction.target_post_id)
+                                            );
+                                            if let Err(e) = storage.save_interaction(&interaction) {
+                                                eprintln!(
+                                                    "[gossip-rx] failed to store interaction: {e}"
+                                                );
+                                            }
+                                            let _ = app_handle
+                                                .emit("interaction-received", &interaction);
+                                        }
+                                    }
+                                }
+                                Ok(GossipMessage::DeleteInteraction { id, author }) => {
+                                    if author == pk {
+                                        println!(
+                                            "[gossip-rx] delete interaction {id} from {}",
+                                            short_id(&pk)
+                                        );
+                                        if let Err(e) = storage.delete_interaction(&id, &author) {
+                                            eprintln!(
+                                                "[gossip-rx] failed to delete interaction: {e}"
+                                            );
+                                        }
+                                        let _ = app_handle.emit(
+                                            "interaction-deleted",
+                                            serde_json::json!({ "id": id, "author": author }),
+                                        );
                                     }
                                 }
                                 Err(e) => {

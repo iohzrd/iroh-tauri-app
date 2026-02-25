@@ -1,7 +1,18 @@
 use iroh_social_types::{
-    ConversationMeta, FollowEntry, FollowerEntry, MediaAttachment, Post, Profile, StoredMessage,
+    ConversationMeta, FollowEntry, FollowerEntry, Interaction, InteractionKind, MediaAttachment,
+    Post, Profile, StoredMessage,
 };
 use rusqlite::{Connection, params};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostCounts {
+    pub likes: u32,
+    pub replies: u32,
+    pub reposts: u32,
+    pub liked_by_me: bool,
+    pub reposted_by_me: bool,
+}
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::Mutex;
@@ -30,6 +41,18 @@ impl Storage {
         (
             "004_outbox_message_id",
             include_str!("../migrations/004_outbox_message_id.sql"),
+        ),
+        (
+            "005_interactions",
+            include_str!("../migrations/005_interactions.sql"),
+        ),
+        (
+            "006_post_replies",
+            include_str!("../migrations/006_post_replies.sql"),
+        ),
+        (
+            "007_signatures",
+            include_str!("../migrations/007_signatures.sql"),
         ),
     ];
 
@@ -105,14 +128,17 @@ impl Storage {
         let db = self.db.lock().unwrap();
         let media_json = serde_json::to_string(&post.media)?;
         db.execute(
-            "INSERT OR IGNORE INTO posts (id, author, content, timestamp, media_json)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR IGNORE INTO posts (id, author, content, timestamp, media_json, reply_to, reply_to_author, signature)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 post.id,
                 post.author,
                 post.content,
                 post.timestamp as i64,
-                media_json
+                media_json,
+                post.reply_to,
+                post.reply_to_author,
+                post.signature,
             ],
         )?;
         Ok(())
@@ -121,7 +147,7 @@ impl Storage {
     pub fn get_post_by_id(&self, id: &str) -> anyhow::Result<Option<Post>> {
         let db = self.db.lock().unwrap();
         let mut stmt =
-            db.prepare("SELECT id, author, content, timestamp, media_json FROM posts WHERE id=?1")?;
+            db.prepare("SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts WHERE id=?1")?;
         let mut rows = stmt.query(params![id])?;
         match rows.next()? {
             Some(row) => Ok(Some(Self::row_to_post(row)?)),
@@ -135,7 +161,7 @@ impl Storage {
         match before {
             Some(b) => {
                 let mut stmt = db.prepare(
-                    "SELECT id, author, content, timestamp, media_json FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
                      WHERE timestamp < ?1 ORDER BY timestamp DESC LIMIT ?2",
                 )?;
                 let mut rows = stmt.query(params![b as i64, limit as i64])?;
@@ -145,7 +171,7 @@ impl Storage {
             }
             None => {
                 let mut stmt = db.prepare(
-                    "SELECT id, author, content, timestamp, media_json FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
                      ORDER BY timestamp DESC LIMIT ?1",
                 )?;
                 let mut rows = stmt.query(params![limit as i64])?;
@@ -186,7 +212,7 @@ impl Storage {
         match before {
             Some(b) => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
                      WHERE author=?1 AND timestamp < ?2{filter_clause} ORDER BY timestamp DESC LIMIT ?3"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -197,7 +223,7 @@ impl Storage {
             }
             None => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
                      WHERE author=?1{filter_clause} ORDER BY timestamp DESC LIMIT ?2"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -218,7 +244,7 @@ impl Storage {
     ) -> anyhow::Result<Vec<Post>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare(
-            "SELECT id, author, content, timestamp, media_json FROM posts
+            "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
              WHERE author=?1 AND timestamp > ?2 ORDER BY timestamp ASC LIMIT ?3",
         )?;
         let mut rows = stmt.query(params![author, after as i64, limit as i64])?;
@@ -261,7 +287,205 @@ impl Storage {
             content: row.get(2)?,
             timestamp: row.get::<_, i64>(3)? as u64,
             media,
+            reply_to: row.get(5)?,
+            reply_to_author: row.get(6)?,
+            signature: row.get(7)?,
         })
+    }
+
+    // -- Interactions (likes/reposts) --
+
+    pub fn save_interaction(&self, interaction: &Interaction) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        let kind_str = match interaction.kind {
+            InteractionKind::Like => "Like",
+            InteractionKind::Repost => "Repost",
+        };
+        db.execute(
+            "INSERT OR IGNORE INTO interactions (id, author, kind, target_post_id, target_author, timestamp, signature)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                interaction.id,
+                interaction.author,
+                kind_str,
+                interaction.target_post_id,
+                interaction.target_author,
+                interaction.timestamp as i64,
+                interaction.signature,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_interaction(&self, id: &str, author: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let count = db.execute(
+            "DELETE FROM interactions WHERE id=?1 AND author=?2",
+            params![id, author],
+        )?;
+        Ok(count > 0)
+    }
+
+    /// Delete a like/repost by target, returning the interaction ID if found.
+    pub fn delete_interaction_by_target(
+        &self,
+        author: &str,
+        kind: &str,
+        target_post_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let db = self.db.lock().unwrap();
+        let id: Option<String> = db
+            .query_row(
+                "SELECT id FROM interactions WHERE author=?1 AND kind=?2 AND target_post_id=?3",
+                params![author, kind, target_post_id],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(ref id) = id {
+            db.execute(
+                "DELETE FROM interactions WHERE id=?1 AND author=?2",
+                params![id, author],
+            )?;
+        }
+        Ok(id)
+    }
+
+    pub fn get_post_counts(
+        &self,
+        my_pubkey: &str,
+        target_post_id: &str,
+    ) -> anyhow::Result<PostCounts> {
+        let db = self.db.lock().unwrap();
+        let likes: i64 = db.query_row(
+            "SELECT COUNT(*) FROM interactions WHERE target_post_id=?1 AND kind='Like'",
+            params![target_post_id],
+            |row| row.get(0),
+        )?;
+        let reposts: i64 = db.query_row(
+            "SELECT COUNT(*) FROM interactions WHERE target_post_id=?1 AND kind='Repost'",
+            params![target_post_id],
+            |row| row.get(0),
+        )?;
+        let replies: i64 = db.query_row(
+            "SELECT COUNT(*) FROM posts WHERE reply_to=?1",
+            params![target_post_id],
+            |row| row.get(0),
+        )?;
+        let liked_by_me: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM interactions WHERE author=?1 AND kind='Like' AND target_post_id=?2",
+            params![my_pubkey, target_post_id],
+            |row| row.get(0),
+        )?;
+        let reposted_by_me: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM interactions WHERE author=?1 AND kind='Repost' AND target_post_id=?2",
+            params![my_pubkey, target_post_id],
+            |row| row.get(0),
+        )?;
+        Ok(PostCounts {
+            likes: likes as u32,
+            replies: replies as u32,
+            reposts: reposts as u32,
+            liked_by_me,
+            reposted_by_me,
+        })
+    }
+
+    pub fn get_interactions_by_author(
+        &self,
+        author: &str,
+        limit: usize,
+        before: Option<u64>,
+    ) -> anyhow::Result<Vec<Interaction>> {
+        let db = self.db.lock().unwrap();
+        let mut interactions = Vec::new();
+        match before {
+            Some(b) => {
+                let mut stmt = db.prepare(
+                    "SELECT id, author, kind, target_post_id, target_author, timestamp, signature
+                     FROM interactions WHERE author=?1 AND timestamp < ?2
+                     ORDER BY timestamp DESC LIMIT ?3",
+                )?;
+                let mut rows = stmt.query(params![author, b as i64, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    interactions.push(Self::row_to_interaction(row)?);
+                }
+            }
+            None => {
+                let mut stmt = db.prepare(
+                    "SELECT id, author, kind, target_post_id, target_author, timestamp, signature
+                     FROM interactions WHERE author=?1
+                     ORDER BY timestamp DESC LIMIT ?2",
+                )?;
+                let mut rows = stmt.query(params![author, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    interactions.push(Self::row_to_interaction(row)?);
+                }
+            }
+        }
+        Ok(interactions)
+    }
+
+    fn row_to_interaction(row: &rusqlite::Row) -> anyhow::Result<Interaction> {
+        let kind_str: String = row.get(2)?;
+        let kind = match kind_str.as_str() {
+            "Like" => InteractionKind::Like,
+            "Repost" => InteractionKind::Repost,
+            other => anyhow::bail!("unknown interaction kind: {other}"),
+        };
+        Ok(Interaction {
+            id: row.get(0)?,
+            author: row.get(1)?,
+            kind,
+            target_post_id: row.get(3)?,
+            target_author: row.get(4)?,
+            timestamp: row.get::<_, i64>(5)? as u64,
+            signature: row.get(6)?,
+        })
+    }
+
+    // -- Replies --
+
+    pub fn get_replies(
+        &self,
+        parent_post_id: &str,
+        limit: usize,
+        before: Option<u64>,
+    ) -> anyhow::Result<Vec<Post>> {
+        let db = self.db.lock().unwrap();
+        let mut posts = Vec::new();
+        match before {
+            Some(b) => {
+                let mut stmt = db.prepare(
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                     WHERE reply_to=?1 AND timestamp < ?2 ORDER BY timestamp ASC LIMIT ?3",
+                )?;
+                let mut rows = stmt.query(params![parent_post_id, b as i64, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    posts.push(Self::row_to_post(row)?);
+                }
+            }
+            None => {
+                let mut stmt = db.prepare(
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                     WHERE reply_to=?1 ORDER BY timestamp ASC LIMIT ?2",
+                )?;
+                let mut rows = stmt.query(params![parent_post_id, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    posts.push(Self::row_to_post(row)?);
+                }
+            }
+        }
+        Ok(posts)
+    }
+
+    pub fn count_replies(&self, parent_post_id: &str) -> anyhow::Result<u64> {
+        let db = self.db.lock().unwrap();
+        let count: i64 = db.query_row(
+            "SELECT COUNT(*) FROM posts WHERE reply_to=?1",
+            params![parent_post_id],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
     }
 
     // -- Remote Profiles --

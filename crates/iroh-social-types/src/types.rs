@@ -25,6 +25,28 @@ pub struct Post {
     pub timestamp: u64,
     #[serde(default)]
     pub media: Vec<MediaAttachment>,
+    #[serde(default)]
+    pub reply_to: Option<String>,
+    #[serde(default)]
+    pub reply_to_author: Option<String>,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Interaction {
+    pub id: String,
+    pub author: String,
+    pub kind: InteractionKind,
+    pub target_post_id: String,
+    pub target_author: String,
+    pub timestamp: u64,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum InteractionKind {
+    Like,
+    Repost,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

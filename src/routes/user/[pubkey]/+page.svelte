@@ -6,6 +6,8 @@
   import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
   import Avatar from "$lib/Avatar.svelte";
+  import PostActions from "$lib/PostActions.svelte";
+  import ReplyComposer from "$lib/ReplyComposer.svelte";
   import type {
     MediaAttachment,
     Post,
@@ -33,6 +35,7 @@
   let copyFeedback = $state(false);
   let hasMore = $state(true);
   let loadingMore = $state(false);
+  let replyingTo = $state<Post | null>(null);
   let lightboxSrc = $state("");
   let lightboxAlt = $state("");
   let toastMessage = $state("");
@@ -368,7 +371,9 @@
     {#each posts as post (post.id)}
       <article class="post">
         <div class="post-header">
-          <span class="time"><Timeago timestamp={post.timestamp} /></span>
+          <a href="/post/{post.id}" class="time-link">
+            <Timeago timestamp={post.timestamp} />
+          </a>
         </div>
         {#if post.content}
           <p class="post-content">{@html linkify(post.content)}</p>
@@ -411,6 +416,31 @@
               {/if}
             {/each}
           </div>
+        {/if}
+        <PostActions
+          postId={post.id}
+          postAuthor={post.author}
+          onreply={() => {
+            replyingTo = replyingTo?.id === post.id ? null : post;
+          }}
+        />
+        {#if replyingTo?.id === post.id}
+          <ReplyComposer
+            replyToId={post.id}
+            replyToAuthor={post.author}
+            onsubmitted={() => {
+              replyingTo = null;
+              reloadPosts();
+            }}
+            oncancel={() => {
+              replyingTo = null;
+            }}
+          />
+        {/if}
+        {#if post.reply_to}
+          <a href="/post/{post.reply_to}" class="reply-context">
+            in reply to a post
+          </a>
         {/if}
       </article>
     {:else}
@@ -642,9 +672,28 @@
     margin-bottom: 0.5rem;
   }
 
-  .time {
+  .time-link {
     color: #666;
     font-size: 0.8rem;
+    text-decoration: none;
+  }
+
+  .time-link:hover {
+    color: #888;
+    text-decoration: underline;
+  }
+
+  .reply-context {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: #666;
+    text-decoration: none;
+  }
+
+  .reply-context:hover {
+    color: #a78bfa;
+    text-decoration: underline;
   }
 
   .post-content {

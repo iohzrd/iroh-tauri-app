@@ -12,6 +12,9 @@ export interface Post {
   content: string;
   timestamp: number;
   media: MediaAttachment[];
+  reply_to: string | null;
+  reply_to_author: string | null;
+  signature: string;
 }
 
 export interface PendingAttachment {
@@ -49,6 +52,24 @@ export interface NodeStatus {
   relay_url: string | null;
   follow_count: number;
   follower_count: number;
+}
+
+export interface Interaction {
+  id: string;
+  author: string;
+  kind: "Like" | "Repost";
+  target_post_id: string;
+  target_author: string;
+  timestamp: number;
+  signature: string;
+}
+
+export interface PostCounts {
+  likes: number;
+  replies: number;
+  reposts: number;
+  liked_by_me: boolean;
+  reposted_by_me: boolean;
 }
 
 export interface SyncResult {

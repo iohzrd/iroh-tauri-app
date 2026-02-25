@@ -5,6 +5,8 @@
   import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
   import Avatar from "$lib/Avatar.svelte";
+  import PostActions from "$lib/PostActions.svelte";
+  import ReplyComposer from "$lib/ReplyComposer.svelte";
   import type { MediaAttachment, Post, PendingAttachment } from "$lib/types";
   import {
     shortId,
@@ -37,6 +39,7 @@
   let toastType = $state<"error" | "success">("error");
   let loadingMore = $state(false);
   let hasMore = $state(true);
+  let replyingTo = $state<Post | null>(null);
   let lightboxSrc = $state("");
   let lightboxAlt = $state("");
   let sentinel = $state<HTMLDivElement>(null!);
@@ -509,7 +512,9 @@
             </a>
           {/await}
           <div class="post-header-right">
-            <span class="time"><Timeago timestamp={post.timestamp} /></span>
+            <a href="/post/{post.id}" class="time-link">
+              <Timeago timestamp={post.timestamp} />
+            </a>
             {#if post.author === nodeId}
               <button class="delete-btn" onclick={() => confirmDelete(post.id)}>
                 &times;
@@ -558,6 +563,31 @@
               {/if}
             {/each}
           </div>
+        {/if}
+        <PostActions
+          postId={post.id}
+          postAuthor={post.author}
+          onreply={() => {
+            replyingTo = replyingTo?.id === post.id ? null : post;
+          }}
+        />
+        {#if replyingTo?.id === post.id}
+          <ReplyComposer
+            replyToId={post.id}
+            replyToAuthor={post.author}
+            onsubmitted={() => {
+              replyingTo = null;
+              loadFeed();
+            }}
+            oncancel={() => {
+              replyingTo = null;
+            }}
+          />
+        {/if}
+        {#if post.reply_to}
+          <a href="/post/{post.reply_to}" class="reply-context">
+            in reply to a post
+          </a>
         {/if}
       </article>
     {:else}
@@ -935,10 +965,29 @@
     color: #a78bfa;
   }
 
-  .time {
+  .time-link {
     color: #666;
     font-size: 0.8rem;
     white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .time-link:hover {
+    color: #888;
+    text-decoration: underline;
+  }
+
+  .reply-context {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: #666;
+    text-decoration: none;
+  }
+
+  .reply-context:hover {
+    color: #a78bfa;
+    text-decoration: underline;
   }
 
   .post-content {

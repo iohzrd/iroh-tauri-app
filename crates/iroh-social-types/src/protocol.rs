@@ -1,4 +1,4 @@
-use crate::types::{Post, Profile};
+use crate::types::{Interaction, Post, Profile};
 use iroh_gossip::TopicId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -8,6 +8,8 @@ pub enum GossipMessage {
     NewPost(Post),
     DeletePost { id: String, author: String },
     ProfileUpdate(Profile),
+    NewInteraction(Interaction),
+    DeleteInteraction { id: String, author: String },
 }
 
 pub fn user_feed_topic(pubkey: &str) -> TopicId {
@@ -35,4 +37,6 @@ pub struct SyncResponse {
     pub total_count: u64,
     pub newest_ts: Option<u64>,
     pub oldest_ts: Option<u64>,
+    #[serde(default)]
+    pub interactions: Vec<Interaction>,
 }
