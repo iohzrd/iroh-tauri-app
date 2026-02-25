@@ -23,6 +23,7 @@ pub const SYNC_ALPN: &[u8] = b"iroh-social/sync/1";
 pub struct SyncRequest {
     pub author: String,
     pub before: Option<u64>,
+    pub after: Option<u64>,
     pub limit: u32,
 }
 
@@ -31,4 +32,7 @@ pub struct SyncResponse {
     pub posts: Vec<Post>,
     #[serde(default)]
     pub profile: Option<Profile>,
+    pub total_count: u64,
+    pub newest_ts: Option<u64>,
+    pub oldest_ts: Option<u64>,
 }

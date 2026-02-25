@@ -200,25 +200,43 @@ async fn sync_posts(
     pubkey: String,
     before: Option<u64>,
     limit: Option<u32>,
-) -> Result<Vec<Post>, String> {
+) -> Result<SyncResult, String> {
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
 
-    println!("[sync] requesting posts from {}...", short_id(&pubkey));
-    let (posts, profile) =
-        sync::fetch_remote_posts(&endpoint, target, &pubkey, before, limit.unwrap_or(20))
-            .await
-            .map_err(|e| e.to_string())?;
+    // Smart sync: fetch only posts newer than our local newest
+    let (_local_oldest, local_newest) = storage
+        .get_author_post_range(&pubkey)
+        .unwrap_or((None, None));
+
+    let after = if before.is_none() { local_newest } else { None };
 
     println!(
-        "[sync] received {} posts from {}",
-        posts.len(),
-        short_id(&pubkey)
+        "[sync] requesting posts from {} (after={:?}, before={:?})...",
+        short_id(&pubkey),
+        after,
+        before
+    );
+    let resp = sync::fetch_remote_posts(
+        &endpoint,
+        target,
+        &pubkey,
+        before,
+        after,
+        limit.unwrap_or(50),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    println!(
+        "[sync] received {} posts from {} (total_remote={})",
+        resp.posts.len(),
+        short_id(&pubkey),
+        resp.total_count
     );
 
-    // Store fetched posts and profile locally
-    for post in &posts {
+    for post in &resp.posts {
         if let Err(reason) = validate_post(post) {
             eprintln!("[sync] rejected post {}: {reason}", &post.id);
             continue;
@@ -227,13 +245,93 @@ async fn sync_posts(
             eprintln!("[sync] failed to store post: {e}");
         }
     }
-    if let Some(profile) = &profile
+    if let Some(profile) = &resp.profile
         && let Err(e) = storage.save_remote_profile(&pubkey, profile)
     {
         eprintln!("[sync] failed to store profile: {e}");
     }
 
-    Ok(posts)
+    Ok(SyncResult {
+        posts: resp.posts,
+        remote_total: resp.total_count,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SyncResult {
+    posts: Vec<Post>,
+    remote_total: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SyncStatus {
+    local_count: u64,
+}
+
+#[tauri::command]
+async fn get_sync_status(
+    state: State<'_, Arc<AppState>>,
+    pubkey: String,
+) -> Result<SyncStatus, String> {
+    let local_count = state
+        .storage
+        .count_posts_by_author(&pubkey)
+        .map_err(|e| e.to_string())?;
+    Ok(SyncStatus { local_count })
+}
+
+#[tauri::command]
+async fn fetch_older_posts(
+    state: State<'_, Arc<AppState>>,
+    pubkey: String,
+    before: u64,
+    limit: Option<u32>,
+) -> Result<SyncResult, String> {
+    let endpoint = state.endpoint.clone();
+    let storage = state.storage.clone();
+    let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
+
+    println!(
+        "[remote-fetch] fetching older posts from {} (before={})",
+        short_id(&pubkey),
+        before
+    );
+
+    let resp = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        sync::fetch_remote_posts(
+            &endpoint,
+            target,
+            &pubkey,
+            Some(before),
+            None,
+            limit.unwrap_or(50),
+        ),
+    )
+    .await
+    .map_err(|_| "peer offline or unreachable".to_string())?
+    .map_err(|e| e.to_string())?;
+
+    for post in &resp.posts {
+        if let Err(reason) = validate_post(post) {
+            eprintln!("[remote-fetch] rejected post {}: {reason}", &post.id);
+            continue;
+        }
+        if let Err(e) = storage.insert_post(post) {
+            eprintln!("[remote-fetch] failed to store post: {e}");
+        }
+    }
+
+    println!(
+        "[remote-fetch] fetched {} older posts from {}",
+        resp.posts.len(),
+        short_id(&pubkey)
+    );
+
+    Ok(SyncResult {
+        posts: resp.posts,
+        remote_total: resp.total_count,
+    })
 }
 
 // -- Follows --
@@ -265,9 +363,9 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
-    match sync::fetch_remote_posts(&endpoint, target, &pubkey, None, 50).await {
-        Ok((posts, profile)) => {
-            for post in &posts {
+    match sync::fetch_remote_posts(&endpoint, target, &pubkey, None, None, 50).await {
+        Ok(resp) => {
+            for post in &resp.posts {
                 if let Err(reason) = validate_post(post) {
                     eprintln!("[follow-sync] rejected post {}: {reason}", &post.id);
                     continue;
@@ -276,15 +374,16 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
                     eprintln!("[follow-sync] failed to store post: {e}");
                 }
             }
-            if let Some(profile) = &profile
+            if let Some(profile) = &resp.profile
                 && let Err(e) = storage.save_remote_profile(&pubkey, profile)
             {
                 eprintln!("[follow-sync] failed to store profile: {e}");
             }
             println!(
-                "[follow-sync] synced {} posts from {}",
-                posts.len(),
-                short_id(&pubkey)
+                "[follow-sync] synced {} posts from {} (total_remote={})",
+                resp.posts.len(),
+                short_id(&pubkey),
+                resp.total_count
             );
         }
         Err(e) => {
@@ -689,7 +788,9 @@ fn load_or_create_key(path: &std::path::Path) -> SecretKey {
     }
 }
 
-async fn sync_one_follow(
+/// Forward catch-up sync: fetch posts newer than our newest local post.
+/// Falls back to a full initial sync if we have no local posts yet.
+async fn sync_peer_posts(
     endpoint: &Endpoint,
     storage: &Arc<Storage>,
     pubkey: &str,
@@ -700,40 +801,51 @@ async fn sync_one_follow(
         Err(_) => return,
     };
 
+    // Derive the forward cursor from actual stored posts
+    let (_, newest_local) = storage
+        .get_author_post_range(pubkey)
+        .unwrap_or((None, None));
+
+    // If we have local posts, do forward catch-up; otherwise full initial sync
+    let after = newest_local;
+
     for attempt in 1..=3 {
         println!(
-            "[startup-sync] syncing from {} (attempt {}/3)...",
+            "[startup-sync] syncing from {} (attempt {}/3, after={:?})...",
             short_id(pubkey),
-            attempt
+            attempt,
+            after
         );
         let start = std::time::Instant::now();
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(15),
-            sync::fetch_remote_posts(endpoint, target, pubkey, None, 50),
+            sync::fetch_remote_posts(endpoint, target, pubkey, None, after, 50),
         )
         .await;
         let elapsed = start.elapsed();
 
         match result {
-            Ok(Ok((posts, profile))) => {
-                for post in &posts {
+            Ok(Ok(resp)) => {
+                for post in &resp.posts {
                     if let Err(reason) = validate_post(post) {
                         eprintln!("[startup-sync] rejected post {}: {reason}", &post.id);
                         continue;
                     }
                     let _ = storage.insert_post(post);
                 }
-                if let Some(profile) = &profile {
+                if let Some(profile) = &resp.profile {
                     let _ = storage.save_remote_profile(pubkey, profile);
                 }
-                if !posts.is_empty() || profile.is_some() {
+
+                if !resp.posts.is_empty() || resp.profile.is_some() {
                     let _ = handle.emit("feed-updated", ());
                 }
                 println!(
-                    "[startup-sync] synced {} posts from {} in {:.1}s",
-                    posts.len(),
+                    "[startup-sync] synced {} posts from {} in {:.1}s (total_remote={})",
+                    resp.posts.len(),
                     short_id(pubkey),
-                    elapsed.as_secs_f64()
+                    elapsed.as_secs_f64(),
+                    resp.total_count
                 );
                 return;
             }
@@ -907,7 +1019,7 @@ pub fn run() {
                         let sem = semaphore.clone();
                         join_set.spawn(async move {
                             let _permit = sem.acquire().await;
-                            sync_one_follow(&ep, &st, &f.pubkey, &hdl).await;
+                            sync_peer_posts(&ep, &st, &f.pubkey, &hdl).await;
                         });
                     }
 
@@ -917,6 +1029,115 @@ pub fn run() {
                         }
                     }
                     println!("[startup-sync] done");
+                });
+
+                // Background backward drip sync: pages through older history slowly
+                let drip_endpoint = endpoint.clone();
+                let drip_storage = storage_clone.clone();
+                let drip_handle = handle.clone();
+                tokio::spawn(async move {
+                    // Wait for startup sync to mostly complete before starting drip
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+                    loop {
+                        let follows = drip_storage.get_follows().unwrap_or_default();
+                        let mut any_work = false;
+
+                        for f in &follows {
+                            let target: iroh::EndpointId = match f.pubkey.parse() {
+                                Ok(t) => t,
+                                Err(_) => continue,
+                            };
+
+                            // Derive cursors from actual stored posts
+                            let (oldest_local, _newest_local) = drip_storage
+                                .get_author_post_range(&f.pubkey)
+                                .unwrap_or((None, None));
+
+                            // Skip if we have no local posts (startup sync hasn't run yet)
+                            let before = match oldest_local {
+                                Some(ts) => Some(ts),
+                                None => continue,
+                            };
+
+                            let local_count = drip_storage
+                                .count_posts_by_author(&f.pubkey)
+                                .unwrap_or(0);
+
+                            println!(
+                                "[drip-sync] backward sync for {} (before={:?}, local_count={})",
+                                short_id(&f.pubkey),
+                                before,
+                                local_count
+                            );
+
+                            let result = tokio::time::timeout(
+                                std::time::Duration::from_secs(15),
+                                sync::fetch_remote_posts(
+                                    &drip_endpoint,
+                                    target,
+                                    &f.pubkey,
+                                    before,
+                                    None,
+                                    50,
+                                ),
+                            )
+                            .await;
+
+                            match result {
+                                Ok(Ok(resp)) => {
+                                    if resp.posts.is_empty() {
+                                        println!(
+                                            "[drip-sync] {} fully synced ({} local posts)",
+                                            short_id(&f.pubkey),
+                                            local_count
+                                        );
+                                        continue;
+                                    }
+
+                                    for post in &resp.posts {
+                                        if let Err(reason) = validate_post(post) {
+                                            eprintln!(
+                                                "[drip-sync] rejected post {}: {reason}",
+                                                &post.id
+                                            );
+                                            continue;
+                                        }
+                                        let _ = drip_storage.insert_post(post);
+                                    }
+
+                                    any_work = true;
+                                    let _ = drip_handle.emit("feed-updated", ());
+
+                                    println!(
+                                        "[drip-sync] fetched {} older posts from {} (total_remote={})",
+                                        resp.posts.len(),
+                                        short_id(&f.pubkey),
+                                        resp.total_count
+                                    );
+                                }
+                                Ok(Err(e)) => {
+                                    eprintln!(
+                                        "[drip-sync] failed for {}: {e}",
+                                        short_id(&f.pubkey)
+                                    );
+                                }
+                                Err(_) => {
+                                    eprintln!(
+                                        "[drip-sync] timed out for {}",
+                                        short_id(&f.pubkey)
+                                    );
+                                }
+                            }
+
+                            // Pace between peers
+                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        }
+
+                        // Wait longer between full rounds
+                        let delay = if any_work { 30 } else { 120 };
+                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                    }
                 });
 
                 // Spawn DM outbox flush task (every 60s)
@@ -979,6 +1200,8 @@ pub fn run() {
             get_feed,
             get_user_posts,
             sync_posts,
+            get_sync_status,
+            fetch_older_posts,
             follow_user,
             unfollow_user,
             update_follow_alias,

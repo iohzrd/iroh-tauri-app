@@ -51,6 +51,15 @@ export interface NodeStatus {
   follower_count: number;
 }
 
+export interface SyncResult {
+  posts: Post[];
+  remote_total: number;
+}
+
+export interface SyncStatus {
+  local_count: number;
+}
+
 export interface ConversationMeta {
   peer_pubkey: string;
   last_message_at: number;

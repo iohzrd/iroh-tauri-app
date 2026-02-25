@@ -6,7 +6,14 @@
   import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
   import Avatar from "$lib/Avatar.svelte";
-  import type { MediaAttachment, Post, Profile, FollowEntry } from "$lib/types";
+  import type {
+    MediaAttachment,
+    Post,
+    Profile,
+    FollowEntry,
+    SyncResult,
+    SyncStatus,
+  } from "$lib/types";
   import {
     shortId,
     copyToClipboard,
@@ -32,6 +39,10 @@
   let toastType = $state<"error" | "success">("error");
   let sentinel = $state<HTMLDivElement>(null!);
   let mediaFilter = $state("all");
+  let syncStatus = $state<SyncStatus | null>(null);
+  let remoteTotal = $state<number | null>(null);
+  let fetchingRemote = $state(false);
+  let peerOffline = $state(false);
 
   const FILTERS = [
     { value: "all", label: "All" },
@@ -82,6 +93,14 @@
       const follows: FollowEntry[] = await invoke("get_follows");
       isFollowing = follows.some((f) => f.pubkey === pubkey);
 
+      if (!isSelf) {
+        try {
+          syncStatus = await invoke("get_sync_status", { pubkey });
+        } catch {
+          // sync status is informational, don't block on failure
+        }
+      }
+
       loading = false;
     } catch {
       setTimeout(init, 500);
@@ -126,17 +145,44 @@
         before: oldest.timestamp,
         mediaFilter: mediaFilter === "all" ? null : mediaFilter,
       });
-      if (olderPosts.length === 0) {
-        hasMore = false;
-      } else {
+      if (olderPosts.length > 0) {
         posts = [...posts, ...olderPosts];
         hasMore = olderPosts.length >= 50;
+      } else if (!isSelf && !peerOffline && mediaFilter === "all") {
+        // Local posts exhausted -- try fetching from remote peer
+        await fetchFromRemote(oldest.timestamp);
+      } else {
+        hasMore = false;
       }
     } catch (e) {
       showToast("Failed to load more posts");
       console.error("Failed to load more:", e);
     }
     loadingMore = false;
+  }
+
+  async function fetchFromRemote(before: number) {
+    fetchingRemote = true;
+    try {
+      const result: SyncResult = await invoke("fetch_older_posts", {
+        pubkey,
+        before,
+        limit: 50,
+      });
+      remoteTotal = result.remote_total;
+      if (result.posts.length === 0) {
+        hasMore = false;
+      } else {
+        posts = [...posts, ...result.posts];
+        hasMore = result.posts.length >= 50;
+        // Refresh sync status
+        syncStatus = await invoke("get_sync_status", { pubkey });
+      }
+    } catch {
+      peerOffline = true;
+      hasMore = false;
+    }
+    fetchingRemote = false;
   }
 
   async function toggleFollow() {
@@ -311,6 +357,11 @@
 
   <h3 class="section-title">
     Posts{posts.length > 0 ? ` (${posts.length}${hasMore ? "+" : ""})` : ""}
+    {#if syncStatus && !isSelf}
+      <span class="sync-info">
+        {syncStatus.local_count}{remoteTotal != null ? ` / ${remoteTotal}` : ""} synced
+      </span>
+    {/if}
   </h3>
 
   <div class="feed">
@@ -370,9 +421,18 @@
   {#if hasMore && posts.length > 0}
     <div bind:this={sentinel} class="sentinel">
       {#if loadingMore}
-        <span class="btn-spinner"></span> Loading...
+        <span class="btn-spinner"></span>
+        {#if fetchingRemote}
+          Fetching from peer...
+        {:else}
+          Loading...
+        {/if}
       {/if}
     </div>
+  {/if}
+
+  {#if peerOffline && !hasMore && posts.length > 0}
+    <p class="offline-notice">End of cached posts -- peer is offline</p>
   {/if}
 {/if}
 
@@ -709,5 +769,23 @@
 
   .toast.error {
     border-left: 3px solid #ef4444;
+  }
+
+  .sync-info {
+    font-size: 0.7rem;
+    color: #666;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    margin-left: 0.5rem;
+  }
+
+  .offline-notice {
+    text-align: center;
+    color: #666;
+    font-size: 0.8rem;
+    padding: 0.75rem;
+    border-top: 1px solid #2a2a4a;
+    margin-top: 0.5rem;
   }
 </style>

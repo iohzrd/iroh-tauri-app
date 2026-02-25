@@ -4,7 +4,7 @@ use iroh::{
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
 };
-use iroh_social_types::{Post, Profile, SyncRequest, SyncResponse, short_id};
+use iroh_social_types::{SyncRequest, SyncResponse, short_id};
 use std::sync::Arc;
 
 pub use iroh_social_types::SYNC_ALPN;
@@ -37,28 +37,53 @@ impl ProtocolHandler for SyncHandler {
 
         let req: SyncRequest = serde_json::from_slice(&req_bytes).map_err(AcceptError::from_err)?;
         println!(
-            "[sync-server] request: author={}, before={:?}, limit={}",
+            "[sync-server] request: author={}, before={:?}, after={:?}, limit={}",
             short_id(&req.author),
             req.before,
+            req.after,
             req.limit
         );
 
-        let posts = self
+        let map_err =
+            |e: anyhow::Error| AcceptError::from_err(std::io::Error::other(e.to_string()));
+
+        let posts = if let Some(after) = req.after {
+            self.storage
+                .get_posts_by_author_after(&req.author, after, req.limit as usize)
+                .map_err(map_err)?
+        } else {
+            self.storage
+                .get_posts_by_author(&req.author, req.limit as usize, req.before, None)
+                .map_err(map_err)?
+        };
+
+        let total_count = self
             .storage
-            .get_posts_by_author(&req.author, req.limit as usize, req.before, None)
-            .map_err(|e| AcceptError::from_err(std::io::Error::other(e.to_string())))?;
+            .count_posts_by_author(&req.author)
+            .map_err(map_err)?;
+        let (oldest_ts, newest_ts) = self
+            .storage
+            .get_author_post_range(&req.author)
+            .map_err(map_err)?;
 
         // Include our own profile in the response
         let profile = self.storage.get_profile().ok().flatten();
 
         println!(
-            "[sync-server] responding with {} posts (profile: {}) to {}",
+            "[sync-server] responding with {} posts (total={}, profile: {}) to {}",
             posts.len(),
+            total_count,
             profile.as_ref().map_or("none", |p| &p.display_name),
             short_id(&remote.to_string())
         );
 
-        let resp = SyncResponse { posts, profile };
+        let resp = SyncResponse {
+            posts,
+            profile,
+            total_count,
+            newest_ts,
+            oldest_ts,
+        };
         let resp_bytes = serde_json::to_vec(&resp).map_err(AcceptError::from_err)?;
 
         send.write_all(&resp_bytes)
@@ -91,8 +116,9 @@ pub async fn fetch_remote_posts(
     target: EndpointId,
     author: &str,
     before: Option<u64>,
+    after: Option<u64>,
     limit: u32,
-) -> anyhow::Result<(Vec<Post>, Option<Profile>)> {
+) -> anyhow::Result<SyncResponse> {
     let addr = EndpointAddr::from(target);
     println!(
         "[sync-client] connecting to {} for posts...",
@@ -130,6 +156,7 @@ pub async fn fetch_remote_posts(
     let req = SyncRequest {
         author: author.to_string(),
         before,
+        after,
         limit,
     };
     let req_bytes = serde_json::to_vec(&req)?;
@@ -147,8 +174,9 @@ pub async fn fetch_remote_posts(
     let resp: SyncResponse = serde_json::from_slice(&resp_bytes)?;
 
     println!(
-        "[sync-client] received {} posts (profile: {}) from {} in {:.1}s",
+        "[sync-client] received {} posts (total={}, profile: {}) from {} in {:.1}s",
         resp.posts.len(),
+        resp.total_count,
         resp.profile.as_ref().map_or("none", |p| &p.display_name),
         short_id(author),
         start.elapsed().as_secs_f64()
@@ -157,5 +185,5 @@ pub async fn fetch_remote_posts(
     // Explicitly close so the server's closed().await resolves promptly
     conn.close(0u32.into(), b"done");
 
-    Ok((resp.posts, resp.profile))
+    Ok(resp)
 }
