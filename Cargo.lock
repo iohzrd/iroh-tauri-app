@@ -910,9 +910,9 @@ dependencies = [
 
 [[package]]
 name = "crypto-common"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "211f05e03c7d03754740fd9e585de910a095d6b99f8bcfffdef8319fa02a8331"
+checksum = "77727bb15fa921304124b128af125e7e3b968275d1b108b379190264f4423710"
 dependencies = [
  "hybrid-array",
 ]
@@ -1210,7 +1210,7 @@ checksum = "afa94b64bfc6549e6e4b5a3216f22593224174083da7a90db47e951c4fb31725"
 dependencies = [
  "block-buffer 0.11.0",
  "const-oid",
- "crypto-common 0.2.0",
+ "crypto-common 0.2.1",
 ]
 
 [[package]]
@@ -3012,7 +3012,7 @@ dependencies = [
 
 [[package]]
 name = "iroh-social-types"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "iroh",
  "iroh-gossip",
@@ -3023,7 +3023,7 @@ dependencies = [
 
 [[package]]
 name = "iroh-tauri-app"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "bytes",
