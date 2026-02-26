@@ -47,6 +47,24 @@ impl ProtocolHandler for SyncHandler {
         let map_err =
             |e: anyhow::Error| AcceptError::from_err(std::io::Error::other(e.to_string()));
 
+        let total_count = self
+            .storage
+            .count_posts_by_author(&req.author)
+            .map_err(map_err)?;
+        let (oldest_ts, newest_ts) = self
+            .storage
+            .get_author_post_range(&req.author)
+            .map_err(map_err)?;
+
+        println!(
+            "[sync-server] local state for {}: total={}, oldest={:?}, newest={:?}, after={:?}",
+            short_id(&req.author),
+            total_count,
+            oldest_ts,
+            newest_ts,
+            req.after
+        );
+
         let posts = if let Some(after) = req.after {
             self.storage
                 .get_posts_by_author_after(&req.author, after, req.limit as usize)
@@ -56,15 +74,6 @@ impl ProtocolHandler for SyncHandler {
                 .get_posts_by_author(&req.author, req.limit as usize, req.before, None)
                 .map_err(map_err)?
         };
-
-        let total_count = self
-            .storage
-            .count_posts_by_author(&req.author)
-            .map_err(map_err)?;
-        let (oldest_ts, newest_ts) = self
-            .storage
-            .get_author_post_range(&req.author)
-            .map_err(map_err)?;
 
         // Include interactions by this author
         let interactions = self
