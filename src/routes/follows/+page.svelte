@@ -13,6 +13,8 @@
 
   let follows = $state<FollowEntry[]>([]);
   let followers = $state<FollowerEntry[]>([]);
+  let mutedPubkeys = $state<string[]>([]);
+  let blockedPubkeys = $state<string[]>([]);
   let newPubkey = $state("");
   let loading = $state(true);
   let status = $state("");
@@ -31,8 +33,12 @@
   async function init() {
     try {
       await invoke("get_node_id"); // wait for node ready
-      await loadFollows();
-      await loadFollowers();
+      await Promise.all([
+        loadFollows(),
+        loadFollowers(),
+        loadMuted(),
+        loadBlocked(),
+      ]);
       loading = false;
     } catch {
       setTimeout(init, 500);
@@ -52,6 +58,40 @@
       followers = await invoke("get_followers");
     } catch (e) {
       console.error("Failed to load followers:", e);
+    }
+  }
+
+  async function loadMuted() {
+    try {
+      mutedPubkeys = await invoke("get_muted_pubkeys");
+    } catch (e) {
+      console.error("Failed to load muted:", e);
+    }
+  }
+
+  async function loadBlocked() {
+    try {
+      blockedPubkeys = await invoke("get_blocked_pubkeys");
+    } catch (e) {
+      console.error("Failed to load blocked:", e);
+    }
+  }
+
+  async function unmute(pubkey: string) {
+    try {
+      await invoke("unmute_user", { pubkey });
+      await loadMuted();
+    } catch (e) {
+      status = `Error: ${e}`;
+    }
+  }
+
+  async function unblock(pubkey: string) {
+    try {
+      await invoke("unblock_user", { pubkey });
+      await loadBlocked();
+    } catch (e) {
+      status = `Error: ${e}`;
     }
   }
 
@@ -319,6 +359,74 @@
       {/each}
     </div>
   {/if}
+
+  {#if mutedPubkeys.length > 0}
+    <details class="moderation-section">
+      <summary class="moderation-header muted">
+        Muted ({mutedPubkeys.length})
+      </summary>
+      <div class="follow-list">
+        {#each mutedPubkeys as pubkey (pubkey)}
+          <div class="follow-item">
+            <a href="/user/{pubkey}" class="follow-info">
+              {#await getDisplayName(pubkey, "") then name}
+                <Avatar
+                  {pubkey}
+                  {name}
+                  ticket={getCachedAvatarTicket(pubkey)}
+                />
+                <div class="follow-identity">
+                  {#if name !== shortId(pubkey)}
+                    <span class="display-name">{name}</span>
+                  {/if}
+                  <code>{shortId(pubkey)}</code>
+                </div>
+              {/await}
+            </a>
+            <div class="follow-actions">
+              <button class="unmute-btn" onclick={() => unmute(pubkey)}>
+                Unmute
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </details>
+  {/if}
+
+  {#if blockedPubkeys.length > 0}
+    <details class="moderation-section">
+      <summary class="moderation-header blocked">
+        Blocked ({blockedPubkeys.length})
+      </summary>
+      <div class="follow-list">
+        {#each blockedPubkeys as pubkey (pubkey)}
+          <div class="follow-item">
+            <a href="/user/{pubkey}" class="follow-info">
+              {#await getDisplayName(pubkey, "") then name}
+                <Avatar
+                  {pubkey}
+                  {name}
+                  ticket={getCachedAvatarTicket(pubkey)}
+                />
+                <div class="follow-identity">
+                  {#if name !== shortId(pubkey)}
+                    <span class="display-name">{name}</span>
+                  {/if}
+                  <code>{shortId(pubkey)}</code>
+                </div>
+              {/await}
+            </a>
+            <div class="follow-actions">
+              <button class="unblock-btn" onclick={() => unblock(pubkey)}>
+                Unblock
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </details>
+  {/if}
 {/if}
 
 <style>
@@ -564,6 +672,73 @@
 
   .modal-confirm.save:hover {
     background: #6d28d9;
+  }
+
+  .moderation-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid #2a2a4a;
+    padding-top: 0.75rem;
+  }
+
+  .moderation-header {
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.4rem 0;
+    list-style: none;
+    user-select: none;
+  }
+
+  .moderation-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .moderation-header::before {
+    content: "\25B6";
+    display: inline-block;
+    margin-right: 0.4rem;
+    font-size: 0.65rem;
+    transition: transform 0.15s;
+  }
+
+  details[open] > .moderation-header::before {
+    transform: rotate(90deg);
+  }
+
+  .moderation-header.muted {
+    color: #f59e0b;
+  }
+
+  .moderation-header.blocked {
+    color: #f87171;
+  }
+
+  .unmute-btn {
+    background: transparent;
+    color: #f59e0b;
+    border: 1px solid #f59e0b40;
+    border-radius: 4px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .unmute-btn:hover {
+    background: #f59e0b20;
+  }
+
+  .unblock-btn {
+    background: transparent;
+    color: #f87171;
+    border: 1px solid #f8717140;
+    border-radius: 4px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .unblock-btn:hover {
+    background: #f8717120;
   }
 
   .alias-btn {

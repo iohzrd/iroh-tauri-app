@@ -59,10 +59,17 @@ impl SyncHandler {
 impl ProtocolHandler for SyncHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
         let remote = conn.remote_id();
-        println!(
-            "[sync-server] incoming sync from {}",
-            short_id(&remote.to_string())
-        );
+        let remote_str = remote.to_string();
+        println!("[sync-server] incoming sync from {}", short_id(&remote_str));
+
+        // Reject blocked peers
+        if self.storage.is_blocked(&remote_str).unwrap_or(false) {
+            println!(
+                "[sync-server] rejecting blocked peer {}",
+                short_id(&remote_str)
+            );
+            return Err(AcceptError::from_err(std::io::Error::other("blocked")));
+        }
 
         let (mut send, mut recv) = conn.accept_bi().await?;
 

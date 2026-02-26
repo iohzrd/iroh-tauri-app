@@ -465,6 +465,12 @@ impl ProtocolHandler for DmHandler {
         let remote_str = remote.to_string();
         println!("[dm] incoming connection from {}", short_id(&remote_str));
 
+        // Reject blocked peers
+        if self.storage.is_blocked(&remote_str).unwrap_or(false) {
+            println!("[dm] rejecting blocked peer {}", short_id(&remote_str));
+            return Err(AcceptError::from_err(std::io::Error::other("blocked")));
+        }
+
         let (mut send, mut recv) = conn.accept_bi().await?;
 
         let frame_bytes = recv

@@ -229,6 +229,11 @@ impl FeedManager {
                                                 &post.id,
                                                 short_id(&pk)
                                             );
+                                        } else if storage.is_hidden(&pk).unwrap_or(false) {
+                                            println!(
+                                                "[gossip-rx] skipping post from muted/blocked {}",
+                                                short_id(&pk)
+                                            );
                                         } else {
                                             println!(
                                                 "[gossip-rx] new post {} from {} (sig verified)",
@@ -312,6 +317,11 @@ impl FeedManager {
                                             eprintln!(
                                                 "[gossip-rx] rejected interaction {} from {} (bad sig): {reason}",
                                                 &interaction.id,
+                                                short_id(&pk)
+                                            );
+                                        } else if storage.is_hidden(&pk).unwrap_or(false) {
+                                            println!(
+                                                "[gossip-rx] skipping interaction from muted/blocked {}",
                                                 short_id(&pk)
                                             );
                                         } else {

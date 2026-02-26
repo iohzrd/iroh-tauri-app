@@ -38,6 +38,10 @@
   let fetchingRemote = $state(false);
   let peerOffline = $state(false);
   let pendingDeleteId = $state<string | null>(null);
+  let isMuted = $state(false);
+  let isBlocked = $state(false);
+  let togglingMute = $state(false);
+  let togglingBlock = $state(false);
 
   const FILTERS = [
     { value: "all", label: "All" },
@@ -82,6 +86,11 @@
 
       const follows: FollowEntry[] = await invoke("get_follows");
       isFollowing = follows.some((f) => f.pubkey === pubkey);
+
+      if (!isSelf) {
+        isMuted = await invoke("is_muted", { pubkey });
+        isBlocked = await invoke("is_blocked", { pubkey });
+      }
 
       if (!isSelf) {
         try {
@@ -184,6 +193,41 @@
       console.error("Toggle follow failed:", e);
     }
     toggling = false;
+  }
+
+  async function toggleMute() {
+    togglingMute = true;
+    try {
+      if (isMuted) {
+        await invoke("unmute_user", { pubkey });
+        isMuted = false;
+      } else {
+        await invoke("mute_user", { pubkey });
+        isMuted = true;
+      }
+    } catch (e) {
+      showToast("Failed to toggle mute");
+      console.error("Toggle mute failed:", e);
+    }
+    togglingMute = false;
+  }
+
+  async function toggleBlock() {
+    togglingBlock = true;
+    try {
+      if (isBlocked) {
+        await invoke("unblock_user", { pubkey });
+        isBlocked = false;
+      } else {
+        await invoke("block_user", { pubkey });
+        isBlocked = true;
+        isFollowing = false;
+      }
+    } catch (e) {
+      showToast("Failed to toggle block");
+      console.error("Toggle block failed:", e);
+    }
+    togglingBlock = false;
   }
 
   async function copyNodeId() {
@@ -318,11 +362,29 @@
         class="follow-toggle"
         class:following={isFollowing}
         onclick={toggleFollow}
-        disabled={toggling}
+        disabled={toggling || isBlocked}
       >
         {toggling ? "..." : isFollowing ? "Unfollow" : "Follow"}
       </button>
       <a href="/messages/{pubkey}" class="message-btn">Message</a>
+    </div>
+    <div class="moderation-row">
+      <button
+        class="mod-btn mute"
+        class:active={isMuted}
+        onclick={toggleMute}
+        disabled={togglingMute}
+      >
+        {togglingMute ? "..." : isMuted ? "Unmute" : "Mute"}
+      </button>
+      <button
+        class="mod-btn block"
+        class:active={isBlocked}
+        onclick={toggleBlock}
+        disabled={togglingBlock}
+      >
+        {togglingBlock ? "..." : isBlocked ? "Unblock" : "Block"}
+      </button>
     </div>
   {/if}
 
@@ -557,6 +619,71 @@
   }
 
   .follow-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .moderation-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .mod-btn {
+    flex: 1;
+    background: transparent;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition:
+      color 0.15s,
+      background 0.15s,
+      border-color 0.15s;
+  }
+
+  .mod-btn.mute {
+    color: #888;
+  }
+
+  .mod-btn.mute:hover:not(:disabled) {
+    color: #f59e0b;
+    border-color: #f59e0b40;
+    background: #f59e0b10;
+  }
+
+  .mod-btn.mute.active {
+    color: #f59e0b;
+    border-color: #f59e0b40;
+  }
+
+  .mod-btn.mute.active:hover:not(:disabled) {
+    background: #f59e0b10;
+  }
+
+  .mod-btn.block {
+    color: #888;
+  }
+
+  .mod-btn.block:hover:not(:disabled) {
+    color: #ef4444;
+    border-color: #ef444440;
+    background: #ef444410;
+  }
+
+  .mod-btn.block.active {
+    color: #ef4444;
+    border-color: #ef444440;
+  }
+
+  .mod-btn.block.active:hover:not(:disabled) {
+    background: #ef444410;
+  }
+
+  .mod-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }

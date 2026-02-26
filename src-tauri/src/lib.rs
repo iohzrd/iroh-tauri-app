@@ -916,6 +916,71 @@ async fn get_bookmarks(
         .map_err(|e| e.to_string())
 }
 
+// -- Mute / Block --
+
+#[tauri::command]
+async fn mute_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
+    state.storage.mute_user(&pubkey).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn unmute_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
+    state
+        .storage
+        .unmute_user(&pubkey)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn is_muted(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<bool, String> {
+    state.storage.is_muted(&pubkey).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_muted_pubkeys(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+    state.storage.get_muted_pubkeys().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn block_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
+    // Block also unfollows
+    let is_following = state
+        .storage
+        .get_follows()
+        .map_err(|e| e.to_string())?
+        .iter()
+        .any(|f| f.pubkey == pubkey);
+
+    if is_following {
+        state.storage.unfollow(&pubkey).map_err(|e| e.to_string())?;
+        let mut feed = state.feed.lock().await;
+        feed.unfollow_user(&pubkey);
+    }
+
+    state.storage.block_user(&pubkey).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn unblock_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
+    state
+        .storage
+        .unblock_user(&pubkey)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn is_blocked(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<bool, String> {
+    state.storage.is_blocked(&pubkey).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_blocked_pubkeys(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+    state
+        .storage
+        .get_blocked_pubkeys()
+        .map_err(|e| e.to_string())
+}
+
 // -- Setup --
 
 fn load_or_create_key(path: &std::path::Path) -> SecretKey {
@@ -1327,6 +1392,14 @@ pub fn run() {
             toggle_bookmark,
             is_bookmarked,
             get_bookmarks,
+            mute_user,
+            unmute_user,
+            is_muted,
+            get_muted_pubkeys,
+            block_user,
+            unblock_user,
+            is_blocked,
+            get_blocked_pubkeys,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

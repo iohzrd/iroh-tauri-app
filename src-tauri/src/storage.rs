@@ -58,6 +58,10 @@ impl Storage {
             "008_bookmarks",
             include_str!("../migrations/008_bookmarks.sql"),
         ),
+        (
+            "009_mute_block",
+            include_str!("../migrations/009_mute_block.sql"),
+        ),
     ];
 
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
@@ -161,23 +165,26 @@ impl Storage {
 
     pub fn get_feed(&self, limit: usize, before: Option<u64>) -> anyhow::Result<Vec<Post>> {
         let db = self.db.lock().unwrap();
+        let hidden = "AND author NOT IN (SELECT pubkey FROM mutes UNION SELECT pubkey FROM blocks)";
         let mut posts = Vec::new();
         match before {
             Some(b) => {
-                let mut stmt = db.prepare(
+                let sql = format!(
                     "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
-                     WHERE timestamp < ?1 ORDER BY timestamp DESC LIMIT ?2",
-                )?;
+                     WHERE timestamp < ?1 {hidden} ORDER BY timestamp DESC LIMIT ?2"
+                );
+                let mut stmt = db.prepare(&sql)?;
                 let mut rows = stmt.query(params![b as i64, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
                 }
             }
             None => {
-                let mut stmt = db.prepare(
+                let sql = format!(
                     "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
-                     ORDER BY timestamp DESC LIMIT ?1",
-                )?;
+                     WHERE 1=1 {hidden} ORDER BY timestamp DESC LIMIT ?1"
+                );
+                let mut stmt = db.prepare(&sql)?;
                 let mut rows = stmt.query(params![limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
@@ -612,23 +619,26 @@ impl Storage {
         before: Option<u64>,
     ) -> anyhow::Result<Vec<Post>> {
         let db = self.db.lock().unwrap();
+        let hidden = "AND author NOT IN (SELECT pubkey FROM mutes UNION SELECT pubkey FROM blocks)";
         let mut posts = Vec::new();
         match before {
             Some(b) => {
-                let mut stmt = db.prepare(
+                let sql = format!(
                     "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
-                     WHERE reply_to=?1 AND timestamp < ?2 ORDER BY timestamp ASC LIMIT ?3",
-                )?;
+                     WHERE reply_to=?1 AND timestamp < ?2 {hidden} ORDER BY timestamp ASC LIMIT ?3"
+                );
+                let mut stmt = db.prepare(&sql)?;
                 let mut rows = stmt.query(params![parent_post_id, b as i64, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
                 }
             }
             None => {
-                let mut stmt = db.prepare(
+                let sql = format!(
                     "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
-                     WHERE reply_to=?1 ORDER BY timestamp ASC LIMIT ?2",
-                )?;
+                     WHERE reply_to=?1 {hidden} ORDER BY timestamp ASC LIMIT ?2"
+                );
+                let mut stmt = db.prepare(&sql)?;
                 let mut rows = stmt.query(params![parent_post_id, limit as i64])?;
                 while let Some(row) = rows.next()? {
                     posts.push(Self::row_to_post(row)?);
@@ -1084,6 +1094,102 @@ impl Storage {
         let exists: bool = db.query_row(
             "SELECT COUNT(*) > 0 FROM bookmarks WHERE post_id=?1",
             params![post_id],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
+    }
+
+    // -- Mute / Block --
+
+    pub fn mute_user(&self, pubkey: &str) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        db.execute(
+            "INSERT OR IGNORE INTO mutes (pubkey, created_at) VALUES (?1, ?2)",
+            params![pubkey, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn unmute_user(&self, pubkey: &str) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        db.execute("DELETE FROM mutes WHERE pubkey=?1", params![pubkey])?;
+        Ok(())
+    }
+
+    pub fn is_muted(&self, pubkey: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let exists: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM mutes WHERE pubkey=?1",
+            params![pubkey],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
+    }
+
+    pub fn get_muted_pubkeys(&self) -> anyhow::Result<Vec<String>> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare("SELECT pubkey FROM mutes ORDER BY created_at DESC")?;
+        let mut rows = stmt.query([])?;
+        let mut keys = Vec::new();
+        while let Some(row) = rows.next()? {
+            keys.push(row.get(0)?);
+        }
+        Ok(keys)
+    }
+
+    pub fn block_user(&self, pubkey: &str) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        db.execute(
+            "INSERT OR IGNORE INTO blocks (pubkey, created_at) VALUES (?1, ?2)",
+            params![pubkey, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn unblock_user(&self, pubkey: &str) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        db.execute("DELETE FROM blocks WHERE pubkey=?1", params![pubkey])?;
+        Ok(())
+    }
+
+    pub fn is_blocked(&self, pubkey: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let exists: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM blocks WHERE pubkey=?1",
+            params![pubkey],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
+    }
+
+    pub fn get_blocked_pubkeys(&self) -> anyhow::Result<Vec<String>> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare("SELECT pubkey FROM blocks ORDER BY created_at DESC")?;
+        let mut rows = stmt.query([])?;
+        let mut keys = Vec::new();
+        while let Some(row) = rows.next()? {
+            keys.push(row.get(0)?);
+        }
+        Ok(keys)
+    }
+
+    /// Check if a pubkey is hidden (muted OR blocked).
+    pub fn is_hidden(&self, pubkey: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let exists: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM mutes WHERE pubkey=?1
+             UNION ALL
+             SELECT COUNT(*) > 0 FROM blocks WHERE pubkey=?1
+             LIMIT 1",
+            params![pubkey],
             |row| row.get(0),
         )?;
         Ok(exists)
