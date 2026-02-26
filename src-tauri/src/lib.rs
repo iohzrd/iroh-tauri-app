@@ -65,12 +65,12 @@ async fn save_my_profile(
         .storage
         .save_profile(&profile)
         .map_err(|e| e.to_string())?;
-    println!("[profile] saved profile: {display_name}");
+    log::info!("[profile] saved profile: {display_name}");
     let feed = state.feed.lock().await;
     feed.broadcast_profile(&profile)
         .await
         .map_err(|e| e.to_string())?;
-    println!("[profile] broadcast profile update");
+    log::info!("[profile] broadcast profile update");
     Ok(())
 }
 
@@ -132,15 +132,16 @@ async fn create_post(
         .storage
         .insert_post(&post)
         .map_err(|e| e.to_string())?;
-    println!(
+    log::info!(
         "[post] created post {} ({} media attachments)",
-        &post.id, media_count
+        &post.id,
+        media_count
     );
     let feed = state.feed.lock().await;
     feed.broadcast_post(&post)
         .await
         .map_err(|e| e.to_string())?;
-    println!("[post] broadcast post {}", &post.id);
+    log::info!("[post] broadcast post {}", &post.id);
 
     Ok(post)
 }
@@ -165,12 +166,12 @@ async fn delete_post(state: State<'_, Arc<AppState>>, id: String) -> Result<(), 
     }
 
     let removed = state.storage.delete_post(&id).map_err(|e| e.to_string())?;
-    println!("[post] delete post {id}: removed={removed}");
+    log::info!("[post] delete post {id}: removed={removed}");
     let feed = state.feed.lock().await;
     feed.broadcast_delete(&id, &my_id)
         .await
         .map_err(|e| e.to_string())?;
-    println!("[post] broadcast delete {id}");
+    log::info!("[post] broadcast delete {id}");
 
     Ok(())
 }
@@ -185,7 +186,7 @@ async fn get_feed(
         .storage
         .get_feed(limit.unwrap_or(20), before)
         .map_err(|e| e.to_string())?;
-    println!("[feed] loaded {} posts", posts.len());
+    log::info!("[feed] loaded {} posts", posts.len());
     Ok(posts)
 }
 
@@ -221,15 +222,15 @@ fn process_sync_result(
     let mut stored = 0;
     for post in &result.posts {
         if let Err(reason) = validate_post(post) {
-            eprintln!("[{label}] rejected post {}: {reason}", &post.id);
+            log::error!("[{label}] rejected post {}: {reason}", &post.id);
             continue;
         }
         if let Err(reason) = verify_post_signature(post) {
-            eprintln!("[{label}] rejected post {} (bad sig): {reason}", &post.id);
+            log::error!("[{label}] rejected post {} (bad sig): {reason}", &post.id);
             continue;
         }
         if let Err(e) = storage.insert_post(post) {
-            eprintln!("[{label}] failed to store post: {e}");
+            log::error!("[{label}] failed to store post: {e}");
             continue;
         }
         stored += 1;
@@ -237,7 +238,7 @@ fn process_sync_result(
     if let Some(profile) = &result.profile
         && let Err(e) = storage.save_remote_profile(pubkey, profile)
     {
-        eprintln!("[{label}] failed to store profile: {e}");
+        log::error!("[{label}] failed to store profile: {e}");
     }
     for interaction in &result.interactions {
         if interaction.author == pubkey
@@ -270,7 +271,7 @@ async fn sync_posts(
         .map_err(|e| e.to_string())?;
 
     let stored = process_sync_result(&storage, &pubkey, &result, "sync");
-    println!(
+    log::info!(
         "[sync] stored {stored}/{} posts from {} (mode={:?})",
         result.posts.len(),
         short_id(&pubkey),
@@ -448,7 +449,7 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
     if pubkey == my_id {
         return Err("cannot follow yourself".to_string());
     }
-    println!("[follow] following {}...", short_id(&pubkey));
+    log::info!("[follow] following {}...", short_id(&pubkey));
     let entry = FollowEntry {
         pubkey: pubkey.clone(),
         alias: None,
@@ -462,17 +463,17 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
             .await
             .map_err(|e| e.to_string())?;
     }
-    println!("[follow] subscribed to gossip for {}", short_id(&pubkey));
+    log::info!("[follow] subscribed to gossip for {}", short_id(&pubkey));
 
     // Sync existing posts from the followed user (lock dropped, no blocking)
-    println!("[follow] syncing posts from {}...", short_id(&pubkey));
+    log::info!("[follow] syncing posts from {}...", short_id(&pubkey));
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
     match sync::sync_from_peer(&endpoint, &storage, target, &pubkey).await {
         Ok(result) => {
             let stored = process_sync_result(&storage, &pubkey, &result, "follow-sync");
-            println!(
+            log::info!(
                 "[follow-sync] stored {stored}/{} posts, {} interactions from {} (mode={:?})",
                 result.posts.len(),
                 result.interactions.len(),
@@ -481,7 +482,7 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
             );
         }
         Err(e) => {
-            eprintln!(
+            log::error!(
                 "[follow-sync] failed to sync from {}: {e}",
                 short_id(&pubkey)
             );
@@ -493,11 +494,11 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
 
 #[tauri::command]
 async fn unfollow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
-    println!("[follow] unfollowing {}...", short_id(&pubkey));
+    log::info!("[follow] unfollowing {}...", short_id(&pubkey));
     state.storage.unfollow(&pubkey).map_err(|e| e.to_string())?;
     let mut feed = state.feed.lock().await;
     feed.unfollow_user(&pubkey);
-    println!("[follow] unfollowed {}", short_id(&pubkey));
+    log::info!("[follow] unfollowed {}", short_id(&pubkey));
     Ok(())
 }
 
@@ -546,7 +547,7 @@ async fn add_blob(
 
     let addr = state.endpoint.addr();
     let ticket = BlobTicket::new(addr, tag.hash, tag.format);
-    println!("[blob] added text blob {}", tag.hash);
+    log::info!("[blob] added text blob {}", tag.hash);
 
     Ok(serde_json::json!({
         "hash": tag.hash.to_string(),
@@ -561,7 +562,7 @@ async fn fetch_blob(state: State<'_, Arc<AppState>>, ticket: String) -> Result<S
     let endpoint = state.endpoint.clone();
     let blobs = state.blobs.clone();
 
-    println!("[blob] fetching text blob {}...", ticket.hash());
+    log::info!("[blob] fetching text blob {}...", ticket.hash());
     let conn = endpoint
         .connect(ticket.addr().clone(), iroh_blobs::ALPN)
         .await
@@ -579,7 +580,7 @@ async fn fetch_blob(state: State<'_, Arc<AppState>>, ticket: String) -> Result<S
         .await
         .map_err(|e| e.to_string())?;
 
-    println!(
+    log::info!(
         "[blob] fetched text blob {} ({} bytes)",
         ticket.hash(),
         bytes.len()
@@ -609,7 +610,7 @@ async fn add_blob_bytes(
 
     let addr = state.endpoint.addr();
     let ticket = BlobTicket::new(addr, tag.hash, tag.format);
-    println!("[blob] added blob {} ({size} bytes)", tag.hash);
+    log::info!("[blob] added blob {} ({size} bytes)", tag.hash);
 
     Ok(serde_json::json!({
         "hash": tag.hash.to_string(),
@@ -633,7 +634,7 @@ async fn fetch_blob_bytes(
     }
 
     // Fetch from remote peer -- no lock held
-    println!("[blob] fetching {} from remote...", ticket.hash());
+    log::info!("[blob] fetching {} from remote...", ticket.hash());
     let conn = endpoint
         .connect(ticket.addr().clone(), iroh_blobs::ALPN)
         .await
@@ -651,7 +652,7 @@ async fn fetch_blob_bytes(
         .await
         .map_err(|e| e.to_string())?;
 
-    println!(
+    log::info!(
         "[blob] fetched {} from remote ({} bytes)",
         ticket.hash(),
         bytes.len()
@@ -698,7 +699,7 @@ async fn send_dm(
     media: Option<Vec<MediaAttachment>>,
     reply_to: Option<String>,
 ) -> Result<StoredMessage, String> {
-    println!(
+    log::info!(
         "[dm-cmd] send_dm called: to={}, content_len={}, media={:?}, reply_to={:?}",
         short_id(&to),
         content.len(),
@@ -743,25 +744,25 @@ async fn send_dm(
         .storage
         .upsert_conversation(&to, &my_id, timestamp, &preview)
         .map_err(|e| {
-            eprintln!("[dm-cmd] upsert_conversation error: {e}");
+            log::error!("[dm-cmd] upsert_conversation error: {e}");
             e.to_string()
         })?;
     state.storage.insert_dm_message(&stored).map_err(|e| {
-        eprintln!("[dm-cmd] insert_dm_message error: {e}");
+        log::error!("[dm-cmd] insert_dm_message error: {e}");
         e.to_string()
     })?;
 
-    println!("[dm-cmd] stored message {} locally", short_id(&msg_id));
+    log::info!("[dm-cmd] stored message {} locally", short_id(&msg_id));
 
     // Send async
     let endpoint = state.endpoint.clone();
     let dm_handler = state.dm.clone();
     let to_clone = to.clone();
     tokio::spawn(async move {
-        println!("[dm-cmd] async send starting to {}", short_id(&to_clone));
+        log::info!("[dm-cmd] async send starting to {}", short_id(&to_clone));
         match dm_handler.send_dm(&endpoint, &to_clone, dm_msg).await {
-            Ok(()) => println!("[dm-cmd] async send completed to {}", short_id(&to_clone)),
-            Err(e) => eprintln!("[dm-cmd] async send failed to {}: {e}", short_id(&to_clone)),
+            Ok(()) => log::info!("[dm-cmd] async send completed to {}", short_id(&to_clone)),
+            Err(e) => log::error!("[dm-cmd] async send failed to {}: {e}", short_id(&to_clone)),
         }
     });
 
@@ -776,7 +777,7 @@ async fn get_conversations(
         .storage
         .get_conversations()
         .map_err(|e| e.to_string())?;
-    println!("[dm-cmd] get_conversations: {} conversations", convos.len());
+    log::info!("[dm-cmd] get_conversations: {} conversations", convos.len());
     Ok(convos)
 }
 
@@ -793,7 +794,7 @@ async fn get_dm_messages(
         .storage
         .get_dm_messages(&conv_id, limit.unwrap_or(50), before)
         .map_err(|e| e.to_string())?;
-    println!(
+    log::info!(
         "[dm-cmd] get_dm_messages: peer={}, conv={}, {} messages",
         short_id(&peer_pubkey),
         short_id(&conv_id),
@@ -841,7 +842,7 @@ async fn flush_dm_outbox(state: State<'_, Arc<AppState>>) -> Result<serde_json::
                 total_failed += failed;
             }
             Err(e) => {
-                eprintln!("[dm-outbox] flush error for {}: {e}", short_id(&peer));
+                log::error!("[dm-outbox] flush error for {}: {e}", short_id(&peer));
                 total_failed += 1;
             }
         }
@@ -887,7 +888,7 @@ async fn send_dm_signal(
     // Best-effort: don't fail if peer is offline
     tokio::spawn(async move {
         if let Err(e) = dm_handler.send_signal(&endpoint, &to, payload).await {
-            println!(
+            log::info!(
                 "[dm-signal] failed to send {signal_type} to {}: {e}",
                 short_id(&to)
             );
@@ -1021,7 +1022,7 @@ async fn sync_peer_posts(
     };
 
     for attempt in 1..=3 {
-        println!(
+        log::info!(
             "[startup-sync] syncing from {} (attempt {}/3)...",
             short_id(pubkey),
             attempt,
@@ -1041,7 +1042,7 @@ async fn sync_peer_posts(
                 if stored > 0 || sync_result.profile.is_some() {
                     let _ = handle.emit("feed-updated", ());
                 }
-                println!(
+                log::info!(
                     "[startup-sync] stored {stored}/{} posts from {} in {:.1}s (mode={:?})",
                     sync_result.posts.len(),
                     short_id(pubkey),
@@ -1051,14 +1052,14 @@ async fn sync_peer_posts(
                 return;
             }
             Ok(Err(e)) => {
-                eprintln!(
+                log::error!(
                     "[startup-sync] attempt {attempt} failed for {} after {:.1}s: {e:?}",
                     short_id(pubkey),
                     elapsed.as_secs_f64()
                 );
             }
             Err(_) => {
-                eprintln!(
+                log::error!(
                     "[startup-sync] attempt {attempt} timed out for {} after {:.1}s",
                     short_id(pubkey),
                     elapsed.as_secs_f64()
@@ -1068,7 +1069,7 @@ async fn sync_peer_posts(
 
         if attempt < 3 {
             let delay = attempt as u64 * 5;
-            println!(
+            log::info!(
                 "[startup-sync] retrying {} in {delay}s...",
                 short_id(pubkey)
             );
@@ -1101,6 +1102,17 @@ pub fn run() {
     }
 
     builder
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: None,
+                    }),
+                ])
+                .build(),
+        )
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -1110,7 +1122,7 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 if let Err(e) = app.deep_link().register_all() {
-                    eprintln!("[setup] failed to register deep link schemes: {e}");
+                    log::error!("[setup] failed to register deep link schemes: {e}");
                 }
             }
 
@@ -1121,20 +1133,20 @@ pub fn run() {
                 .app_data_dir()
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(&data_dir).expect("failed to create app data dir");
-            println!("[setup] data dir: {}", data_dir.display());
+            log::info!("[setup] data dir: {}", data_dir.display());
 
             let secret_key = load_or_create_key(&data_dir.join("identity.key"));
             let db_path = data_dir.join("social.db");
             let storage = Arc::new(Storage::open(&db_path).expect("failed to open database"));
-            println!("[setup] database opened");
+            log::info!("[setup] database opened");
 
             let follows = storage.get_follows().unwrap_or_default();
-            println!("[setup] loaded {} follows", follows.len());
+            log::info!("[setup] loaded {} follows", follows.len());
 
             let secret_key_bytes = secret_key.to_bytes();
             let storage_clone = storage.clone();
             tauri::async_runtime::spawn(async move {
-                println!("[setup] binding iroh endpoint...");
+                log::info!("[setup] binding iroh endpoint...");
                 let endpoint = Endpoint::builder()
                     .secret_key(secret_key)
                     .alpns(vec![
@@ -1147,25 +1159,41 @@ pub fn run() {
                     .await
                     .expect("failed to bind iroh endpoint");
 
-                println!("[setup] Node ID: {}", endpoint.id());
-                println!("[setup] addr (immediate): {:?}", endpoint.addr());
+                log::info!("[setup] Node ID: {}", endpoint.id());
+                log::info!("[setup] addr (immediate): {:?}", endpoint.addr());
 
                 // Log relay address after it has time to connect
                 let ep_clone = endpoint.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                    println!("[setup] addr (after 3s): {:?}", ep_clone.addr());
+                    log::info!("[setup] addr (after 3s): {:?}", ep_clone.addr());
                 });
+
+                // On Android, iroh cannot detect network changes natively.
+                // Periodically notify the endpoint so it re-discovers interfaces and relay.
+                #[cfg(target_os = "android")]
+                {
+                    let ep_net = endpoint.clone();
+                    tokio::spawn(async move {
+                        // Initial kick to discover the network right away
+                        ep_net.network_change().await;
+                        log::info!("[android-net] initial network_change() sent");
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                            ep_net.network_change().await;
+                        }
+                    });
+                }
 
                 let blobs_dir = data_dir.join("blobs");
                 let store = FsStore::load(&blobs_dir)
                     .await
                     .expect("failed to open blob store");
-                println!("[setup] blob store opened at {}", blobs_dir.display());
+                log::info!("[setup] blob store opened at {}", blobs_dir.display());
 
                 let blobs = BlobsProtocol::new(&store, None);
                 let gossip = Gossip::builder().spawn(endpoint.clone());
-                println!("[setup] gossip started");
+                log::info!("[setup] gossip started");
 
                 let sync_handler = sync::SyncHandler::new(storage_clone.clone());
                 let dm_handler = DmHandler::new(
@@ -1181,7 +1209,7 @@ pub fn run() {
                     .accept(sync::SYNC_ALPN, sync_handler)
                     .accept(DM_ALPN, dm_handler.clone())
                     .spawn();
-                println!("[setup] router spawned");
+                log::info!("[setup] router spawned");
 
                 let mut feed = FeedManager::new(
                     gossip,
@@ -1191,28 +1219,28 @@ pub fn run() {
                 );
 
                 if let Err(e) = feed.start_own_feed().await {
-                    eprintln!("[setup] failed to start own feed: {e}");
+                    log::error!("[setup] failed to start own feed: {e}");
                 } else {
-                    println!("[setup] own gossip feed started");
+                    log::info!("[setup] own gossip feed started");
                 }
 
                 if let Ok(Some(profile)) = storage_clone.get_profile() {
                     if let Err(e) = feed.broadcast_profile(&profile).await {
-                        eprintln!("[setup] failed to broadcast profile: {e}");
+                        log::error!("[setup] failed to broadcast profile: {e}");
                     } else {
-                        println!("[setup] broadcast profile: {}", profile.display_name);
+                        log::info!("[setup] broadcast profile: {}", profile.display_name);
                     }
                 }
 
                 for f in &follows {
-                    println!("[setup] resubscribing to {}...", short_id(&f.pubkey));
+                    log::info!("[setup] resubscribing to {}...", short_id(&f.pubkey));
                     if let Err(e) = feed.follow_user(f.pubkey.clone()).await {
-                        eprintln!(
+                        log::error!(
                             "[setup] failed to resubscribe to {}: {e}",
                             short_id(&f.pubkey)
                         );
                     } else {
-                        println!("[setup] resubscribed to {}", short_id(&f.pubkey));
+                        log::info!("[setup] resubscribed to {}", short_id(&f.pubkey));
                     }
                 }
 
@@ -1223,23 +1251,23 @@ pub fn run() {
                 let sync_handle = handle.clone();
                 tokio::spawn(async move {
                     // Wait for relay to connect before attempting sync
-                    println!("[startup-sync] waiting for relay connectivity...");
+                    log::info!("[startup-sync] waiting for relay connectivity...");
                     let mut has_relay = false;
                     for i in 0..10 {
                         let addr = sync_endpoint.addr();
                         if addr.relay_urls().next().is_some() {
-                            println!("[startup-sync] relay connected after {}s", i);
+                            log::info!("[startup-sync] relay connected after {}s", i);
                             has_relay = true;
                             break;
                         }
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     }
                     if !has_relay {
-                        eprintln!("[startup-sync] no relay after 10s, attempting sync anyway");
+                        log::error!("[startup-sync] no relay after 10s, attempting sync anyway");
                     }
 
                     // Additional delay to let remote peers finish their own startup
-                    println!("[startup-sync] waiting 5s for peers to be ready...");
+                    log::info!("[startup-sync] waiting 5s for peers to be ready...");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
                     let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
@@ -1258,10 +1286,10 @@ pub fn run() {
 
                     while let Some(result) = join_set.join_next().await {
                         if let Err(e) = result {
-                            eprintln!("[startup-sync] task panicked: {e}");
+                            log::error!("[startup-sync] task panicked: {e}");
                         }
                     }
-                    println!("[startup-sync] done");
+                    log::info!("[startup-sync] done");
                 });
 
                 // Background drip sync: periodically syncs each followed user
@@ -1282,7 +1310,7 @@ pub fn run() {
                                 Err(_) => continue,
                             };
 
-                            println!("[drip-sync] syncing {}", short_id(&f.pubkey),);
+                            log::info!("[drip-sync] syncing {}", short_id(&f.pubkey),);
 
                             let result = tokio::time::timeout(
                                 std::time::Duration::from_secs(30),
@@ -1300,7 +1328,10 @@ pub fn run() {
                                     if sync_result.posts.is_empty()
                                         && sync_result.interactions.is_empty()
                                     {
-                                        println!("[drip-sync] {} up to date", short_id(&f.pubkey),);
+                                        log::info!(
+                                            "[drip-sync] {} up to date",
+                                            short_id(&f.pubkey),
+                                        );
                                         continue;
                                     }
 
@@ -1316,7 +1347,7 @@ pub fn run() {
                                         let _ = drip_handle.emit("feed-updated", ());
                                     }
 
-                                    println!(
+                                    log::info!(
                                         "[drip-sync] stored {stored}/{} posts from {} (mode={:?})",
                                         sync_result.posts.len(),
                                         short_id(&f.pubkey),
@@ -1324,13 +1355,16 @@ pub fn run() {
                                     );
                                 }
                                 Ok(Err(e)) => {
-                                    eprintln!(
+                                    log::error!(
                                         "[drip-sync] failed for {}: {e}",
                                         short_id(&f.pubkey)
                                     );
                                 }
                                 Err(_) => {
-                                    eprintln!("[drip-sync] timed out for {}", short_id(&f.pubkey));
+                                    log::error!(
+                                        "[drip-sync] timed out for {}",
+                                        short_id(&f.pubkey)
+                                    );
                                 }
                             }
 
@@ -1354,20 +1388,20 @@ pub fn run() {
                         let peers = match outbox_storage.get_all_outbox_peers() {
                             Ok(p) => p,
                             Err(e) => {
-                                eprintln!("[dm-outbox] failed to get peers: {e}");
+                                log::error!("[dm-outbox] failed to get peers: {e}");
                                 continue;
                             }
                         };
                         for peer in peers {
                             match outbox_dm.flush_outbox_for_peer(&outbox_ep, &peer).await {
                                 Ok((sent, _)) if sent > 0 => {
-                                    println!(
+                                    log::info!(
                                         "[dm-outbox] flushed {sent} queued messages to {}",
                                         short_id(&peer)
                                     );
                                 }
                                 Err(e) => {
-                                    eprintln!(
+                                    log::error!(
                                         "[dm-outbox] flush error for {}: {e}",
                                         short_id(&peer)
                                     );
@@ -1390,7 +1424,7 @@ pub fn run() {
                 });
 
                 handle.manage(state);
-                println!("[setup] app state ready");
+                log::info!("[setup] app state ready");
             });
 
             Ok(())

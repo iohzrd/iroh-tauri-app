@@ -60,11 +60,11 @@ impl ProtocolHandler for SyncHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
         let remote = conn.remote_id();
         let remote_str = remote.to_string();
-        println!("[sync-server] incoming sync from {}", short_id(&remote_str));
+        log::info!("[sync-server] incoming sync from {}", short_id(&remote_str));
 
         // Reject blocked peers
         if self.storage.is_blocked(&remote_str).unwrap_or(false) {
-            println!(
+            log::warn!(
                 "[sync-server] rejecting blocked peer {}",
                 short_id(&remote_str)
             );
@@ -123,7 +123,7 @@ impl ProtocolHandler for SyncHandler {
 
         let profile = self.storage.get_profile().ok().flatten();
 
-        println!(
+        log::info!(
             "[sync-server] author={}, client=({}/{}/ts={}/its={}), server=({}/{}/after={}/iafter={}), mode={:?}",
             short_id(&req.author),
             req.post_count,
@@ -239,7 +239,7 @@ impl ProtocolHandler for SyncHandler {
         write_frame(&mut data_send, &[]).await?;
         data_send.finish().map_err(AcceptError::from_err)?;
 
-        println!(
+        log::info!(
             "[sync-server] streamed {} posts to {} (mode={:?})",
             total_sent,
             short_id(&remote.to_string()),
@@ -268,14 +268,14 @@ pub async fn sync_from_peer(
     author: &str,
 ) -> anyhow::Result<SyncResult> {
     let addr = EndpointAddr::from(target);
-    println!(
+    log::info!(
         "[sync-client] connecting to {} for sync...",
         short_id(author)
     );
     let start = std::time::Instant::now();
     let conn = match endpoint.connect(addr, SYNC_ALPN).await {
         Ok(c) => {
-            println!(
+            log::info!(
                 "[sync-client] connected to {} in {:.1}s",
                 short_id(author),
                 start.elapsed().as_secs_f64(),
@@ -283,7 +283,7 @@ pub async fn sync_from_peer(
             c
         }
         Err(e) => {
-            eprintln!(
+            log::error!(
                 "[sync-client] failed to connect to {} after {:.1}s: {e:?}",
                 short_id(author),
                 start.elapsed().as_secs_f64(),
@@ -315,7 +315,7 @@ pub async fn sync_from_peer(
     let summary_bytes = recv.read_to_end(65_536).await?;
     let summary: SyncSummary = serde_json::from_slice(&summary_bytes)?;
 
-    println!(
+    log::info!(
         "[sync-client] {} mode={:?}, remote=({}/{}), local=({}/{})",
         short_id(author),
         summary.mode,
@@ -363,7 +363,7 @@ pub async fn sync_from_peer(
             }
             Ok(None) => break, // End of stream
             Err(e) => {
-                eprintln!(
+                log::error!(
                     "[sync-client] frame read error from {}: {e:?}",
                     short_id(author)
                 );
@@ -372,7 +372,7 @@ pub async fn sync_from_peer(
         }
     }
 
-    println!(
+    log::info!(
         "[sync-client] received {} posts, {} interactions from {} in {:.1}s (mode={:?})",
         all_posts.len(),
         all_interactions.len(),

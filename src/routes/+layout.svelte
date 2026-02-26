@@ -215,6 +215,8 @@
     max-width: 640px;
     margin: 0 auto;
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
 
   nav {
@@ -226,6 +228,7 @@
     top: 0;
     background: #1a1a2e;
     z-index: 10;
+    padding-top: env(safe-area-inset-top);
   }
 
   nav a {
@@ -293,7 +296,8 @@
   }
 
   main {
-    padding: 1rem 1rem 2rem;
+    padding: 1rem;
+    flex: 1;
   }
 
   :global(.loading) {
@@ -413,7 +417,7 @@
 
   :global(.toast) {
     position: fixed;
-    bottom: 1.5rem;
+    bottom: 2rem;
     left: 50%;
     transform: translateX(-50%);
     background: #2a2a4a;

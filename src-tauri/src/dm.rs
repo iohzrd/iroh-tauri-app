@@ -53,14 +53,14 @@ impl DmHandler {
         endpoint: &Endpoint,
         peer_pubkey: &str,
     ) -> anyhow::Result<RatchetState> {
-        println!(
+        log::info!(
             "[dm] get_or_establish_session: peer={}",
             short_id(peer_pubkey)
         );
 
         // Try loading existing session
         if let Some(json) = self.storage.get_ratchet_session(peer_pubkey)? {
-            println!(
+            log::info!(
                 "[dm] loaded existing ratchet session for {} ({} bytes)",
                 short_id(peer_pubkey),
                 json.len()
@@ -70,33 +70,33 @@ impl DmHandler {
         }
 
         // No session -- need to handshake
-        println!(
+        log::info!(
             "[dm] no existing session, initiating Noise IK handshake with {}",
             short_id(peer_pubkey)
         );
 
         let peer_id: EndpointId = peer_pubkey.parse().map_err(|e| {
-            eprintln!("[dm] failed to parse peer pubkey: {e}");
+            log::error!("[dm] failed to parse peer pubkey: {e}");
             anyhow::anyhow!("invalid peer pubkey: {e}")
         })?;
         let peer_ed_public = peer_id.as_bytes();
         let peer_x25519_public = ed25519_public_to_x25519(peer_ed_public)
             .ok_or_else(|| anyhow::anyhow!("invalid peer public key"))?;
-        println!("[dm] converted peer ed25519 -> x25519 key");
+        log::info!("[dm] converted peer ed25519 -> x25519 key");
 
         // Noise IK handshake: initiator
         let (initiator_hs, msg1) = noise_initiate(&self.my_x25519_private, &peer_x25519_public)
             .map_err(|e| anyhow::anyhow!("noise init: {e}"))?;
-        println!("[dm] noise init message created ({} bytes)", msg1.len());
+        log::info!("[dm] noise init message created ({} bytes)", msg1.len());
 
         // Connect and perform handshake
         let addr = EndpointAddr::from(peer_id);
-        println!("[dm] connecting to {} on DM_ALPN...", short_id(peer_pubkey));
+        log::info!("[dm] connecting to {} on DM_ALPN...", short_id(peer_pubkey));
         let conn = endpoint.connect(addr, DM_ALPN).await.map_err(|e| {
-            eprintln!("[dm] QUIC connect failed to {}: {e}", short_id(peer_pubkey));
+            log::error!("[dm] QUIC connect failed to {}: {e}", short_id(peer_pubkey));
             e
         })?;
-        println!("[dm] QUIC connected, opening bi-stream...");
+        log::info!("[dm] QUIC connected, opening bi-stream...");
         let (mut send, mut recv) = conn.open_bi().await?;
 
         // Send handshake init
@@ -104,14 +104,14 @@ impl DmHandler {
             noise_message: msg1,
         };
         let bytes = serde_json::to_vec(&handshake)?;
-        println!("[dm] sending handshake init ({} bytes)...", bytes.len());
+        log::info!("[dm] sending handshake init ({} bytes)...", bytes.len());
         send.write_all(&bytes).await?;
         send.finish()?;
 
         // Read handshake response
-        println!("[dm] waiting for handshake response...");
+        log::info!("[dm] waiting for handshake response...");
         let resp_bytes = recv.read_to_end(65536).await?;
-        println!(
+        log::info!(
             "[dm] received handshake response ({} bytes)",
             resp_bytes.len()
         );
@@ -125,7 +125,7 @@ impl DmHandler {
         // Complete handshake
         let shared_secret = noise_complete_initiator(initiator_hs, &noise_response)
             .map_err(|e| anyhow::anyhow!("noise complete: {e}"))?;
-        println!("[dm] noise handshake completed successfully");
+        log::info!("[dm] noise handshake completed successfully");
 
         conn.close(0u32.into(), b"done");
 
@@ -137,7 +137,7 @@ impl DmHandler {
         self.storage
             .save_ratchet_session(peer_pubkey, &json, now_millis())?;
 
-        println!(
+        log::info!(
             "[dm] established and saved ratchet session with {}",
             short_id(peer_pubkey)
         );
@@ -178,11 +178,11 @@ impl DmHandler {
             .await
         {
             Ok(()) => {
-                println!("[dm] sent message to {}", short_id(peer_pubkey));
+                log::info!("[dm] sent message to {}", short_id(peer_pubkey));
                 self.mark_delivered(&message_id);
             }
             Err(e) => {
-                println!(
+                log::warn!(
                     "[dm] peer {} offline, queuing to outbox: {e}",
                     short_id(peer_pubkey)
                 );
@@ -204,7 +204,7 @@ impl DmHandler {
     /// Mark a message as delivered in storage and notify the frontend.
     fn mark_delivered(&self, message_id: &str) {
         if let Err(e) = self.storage.mark_dm_delivered(message_id) {
-            eprintln!(
+            log::error!(
                 "[dm] failed to mark delivered {}: {e}",
                 short_id(message_id)
             );
@@ -294,7 +294,7 @@ impl DmHandler {
         }
 
         if sent > 0 {
-            println!(
+            log::info!(
                 "[dm-outbox] flushed {sent} messages to {}",
                 short_id(peer_pubkey)
             );
@@ -336,7 +336,7 @@ impl DmHandler {
         remote_pubkey: &str,
         noise_message: Vec<u8>,
     ) -> anyhow::Result<Vec<u8>> {
-        println!("[dm] handling handshake from {}", short_id(remote_pubkey));
+        log::info!("[dm] handling handshake from {}", short_id(remote_pubkey));
 
         // Noise IK responder
         let (responder_hs, response_msg) = noise_respond(&self.my_x25519_private, &noise_message)
@@ -355,7 +355,7 @@ impl DmHandler {
         self.storage
             .save_ratchet_session(remote_pubkey, &json, now_millis())?;
 
-        println!("[dm] session established with {}", short_id(remote_pubkey));
+        log::info!("[dm] session established with {}", short_id(remote_pubkey));
 
         let resp = DmHandshake::Response {
             noise_message: response_msg,
@@ -424,7 +424,7 @@ impl DmHandler {
                 self.storage.insert_dm_message(&stored)?;
                 self.storage.increment_unread(&conv_id)?;
 
-                println!("[dm] received message from {}", short_id(remote_pubkey));
+                log::info!("[dm] received message from {}", short_id(remote_pubkey));
 
                 let _ = self.app_handle.emit(
                     "dm-received",
@@ -463,11 +463,11 @@ impl ProtocolHandler for DmHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
         let remote = conn.remote_id();
         let remote_str = remote.to_string();
-        println!("[dm] incoming connection from {}", short_id(&remote_str));
+        log::info!("[dm] incoming connection from {}", short_id(&remote_str));
 
         // Reject blocked peers
         if self.storage.is_blocked(&remote_str).unwrap_or(false) {
-            println!("[dm] rejecting blocked peer {}", short_id(&remote_str));
+            log::warn!("[dm] rejecting blocked peer {}", short_id(&remote_str));
             return Err(AcceptError::from_err(std::io::Error::other("blocked")));
         }
 
@@ -492,7 +492,7 @@ impl ProtocolHandler for DmHandler {
                 }
                 DmHandshake::Response { .. } => {
                     // Should not receive a response as the server side
-                    eprintln!(
+                    log::error!(
                         "[dm] unexpected handshake response from {}",
                         short_id(&remote_str)
                     );
@@ -500,7 +500,7 @@ impl ProtocolHandler for DmHandler {
             }
         } else if let Ok(envelope) = serde_json::from_slice::<EncryptedEnvelope>(&frame_bytes) {
             if let Err(e) = self.handle_encrypted_message(&remote_str, envelope) {
-                eprintln!(
+                log::error!(
                     "[dm] failed to handle message from {}: {e}",
                     short_id(&remote_str)
                 );
@@ -509,7 +509,7 @@ impl ProtocolHandler for DmHandler {
             send.write_all(b"ok").await.map_err(AcceptError::from_err)?;
             send.finish().map_err(AcceptError::from_err)?;
         } else {
-            eprintln!("[dm] unknown frame from {}", short_id(&remote_str));
+            log::error!("[dm] unknown frame from {}", short_id(&remote_str));
         }
 
         conn.closed().await;
