@@ -406,9 +406,9 @@ impl Storage {
 
     fn row_to_interaction(row: &rusqlite::Row) -> anyhow::Result<Interaction> {
         let kind_str: String = row.get(2)?;
-        let kind = match kind_str.as_str() {
-            "Like" => InteractionKind::Like,
-            "Repost" => InteractionKind::Repost,
+        let kind = match kind_str.to_lowercase().as_str() {
+            "like" => InteractionKind::Like,
+            "repost" => InteractionKind::Repost,
             other => anyhow::bail!("unknown interaction kind: {other}"),
         };
         Ok(Interaction {

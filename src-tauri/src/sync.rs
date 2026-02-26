@@ -46,37 +46,13 @@ impl ProtocolHandler for SyncHandler {
             .count_posts_by_author(&req.author)
             .map_err(map_err)?;
 
-        // Get our local post IDs for this author
-        let local_ids: Vec<String> = self
-            .storage
-            .get_post_ids_by_author(&req.author)
-            .map_err(map_err)?;
-
         println!(
-            "[sync-server] request: author={}, limit={}, known_ids={}, total={}\n  local_ids: {:?}\n  peer_known: {:?}",
+            "[sync-server] request: author={}, limit={}, known_ids={}, total={}",
             short_id(&req.author),
             req.limit,
             req.known_ids.len(),
-            total_count,
-            local_ids.iter().map(|id| short_id(id)).collect::<Vec<_>>(),
-            req.known_ids
-                .iter()
-                .map(|id| short_id(id))
-                .collect::<Vec<_>>(),
+            total_count
         );
-
-        // Show which IDs differ
-        let local_set: HashSet<&str> = local_ids.iter().map(|s| s.as_str()).collect();
-        let peer_set: HashSet<&str> = req.known_ids.iter().map(|s| s.as_str()).collect();
-        let only_local: Vec<_> = local_set.difference(&peer_set).collect();
-        let only_peer: Vec<_> = peer_set.difference(&local_set).collect();
-        if !only_local.is_empty() || !only_peer.is_empty() {
-            println!(
-                "[sync-server] diff: only_local={:?}, only_peer={:?}",
-                only_local.iter().map(|id| short_id(id)).collect::<Vec<_>>(),
-                only_peer.iter().map(|id| short_id(id)).collect::<Vec<_>>(),
-            );
-        }
 
         // Fetch all posts by this author, filter out ones the requester already has
         let all_posts = self
