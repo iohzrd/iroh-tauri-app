@@ -100,12 +100,12 @@
   async function loadFeed() {
     try {
       const newPosts: Post[] = await invoke("get_feed", {
-        limit: 50,
+        limit: 20,
         before: null,
       });
       revokeStaleBlobUrls(newPosts);
       posts = newPosts;
-      hasMore = newPosts.length >= 50;
+      hasMore = newPosts.length >= 20;
     } catch (e) {
       showToast("Failed to load feed");
       console.error("Failed to load feed:", e);
@@ -118,14 +118,14 @@
     try {
       const oldest = posts[posts.length - 1];
       const olderPosts: Post[] = await invoke("get_feed", {
-        limit: 50,
+        limit: 20,
         before: oldest.timestamp,
       });
       if (olderPosts.length === 0) {
         hasMore = false;
       } else {
         posts = [...posts, ...olderPosts];
-        hasMore = olderPosts.length >= 50;
+        hasMore = olderPosts.length >= 20;
       }
     } catch (e) {
       showToast("Failed to load more posts");
@@ -139,9 +139,7 @@
     try {
       const follows: { pubkey: string }[] = await invoke("get_follows");
       const results = await Promise.allSettled(
-        follows.map((f) =>
-          invoke("sync_posts", { pubkey: f.pubkey, limit: 50 }),
-        ),
+        follows.map((f) => invoke("sync_posts", { pubkey: f.pubkey })),
       );
       const failures = results.filter((r) => r.status === "rejected").length;
       if (failures > 0 && failures < follows.length) {

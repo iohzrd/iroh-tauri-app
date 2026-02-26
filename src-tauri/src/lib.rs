@@ -179,7 +179,7 @@ async fn get_feed(
 ) -> Result<Vec<Post>, String> {
     let posts = state
         .storage
-        .get_feed(limit.unwrap_or(50), before)
+        .get_feed(limit.unwrap_or(20), before)
         .map_err(|e| e.to_string())?;
     println!("[feed] loaded {} posts", posts.len());
     Ok(posts)
@@ -197,7 +197,7 @@ async fn get_user_posts(
         .storage
         .get_posts_by_author(
             &pubkey,
-            limit.unwrap_or(50),
+            limit.unwrap_or(20),
             before,
             media_filter.as_deref(),
         )
@@ -206,73 +206,77 @@ async fn get_user_posts(
 
 // -- Sync (pull history from peers) --
 
-#[tauri::command]
-async fn sync_posts(
-    state: State<'_, Arc<AppState>>,
-    pubkey: String,
-    limit: Option<u32>,
-) -> Result<SyncResult, String> {
-    let endpoint = state.endpoint.clone();
-    let storage = state.storage.clone();
-    let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
-
-    let known_ids = storage.get_post_ids_by_author(&pubkey).unwrap_or_default();
-
-    println!(
-        "[sync] requesting posts from {} (known_ids={})...",
-        short_id(&pubkey),
-        known_ids.len()
-    );
-    let resp = sync::fetch_remote_posts(&endpoint, target, &pubkey, limit.unwrap_or(50), known_ids)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    println!(
-        "[sync] received {} posts from {} (total_remote={})",
-        resp.posts.len(),
-        short_id(&pubkey),
-        resp.total_count
-    );
-
-    for post in &resp.posts {
+/// Validate and store posts/interactions/profile from a sync result.
+/// Returns the number of posts actually stored.
+fn process_sync_result(
+    storage: &Storage,
+    pubkey: &str,
+    result: &sync::SyncResult,
+    label: &str,
+) -> usize {
+    let mut stored = 0;
+    for post in &result.posts {
         if let Err(reason) = validate_post(post) {
-            eprintln!("[sync] rejected post {}: {reason}", &post.id);
+            eprintln!("[{label}] rejected post {}: {reason}", &post.id);
             continue;
         }
         if let Err(reason) = verify_post_signature(post) {
-            eprintln!("[sync] rejected post {} (bad sig): {reason}", &post.id);
+            eprintln!("[{label}] rejected post {} (bad sig): {reason}", &post.id);
             continue;
         }
         if let Err(e) = storage.insert_post(post) {
-            eprintln!("[sync] failed to store post: {e}");
-        }
-    }
-    if let Some(profile) = &resp.profile
-        && let Err(e) = storage.save_remote_profile(&pubkey, profile)
-    {
-        eprintln!("[sync] failed to store profile: {e}");
-    }
-    for interaction in &resp.interactions {
-        if interaction.author != pubkey {
+            eprintln!("[{label}] failed to store post: {e}");
             continue;
         }
-        if validate_interaction(interaction).is_ok()
+        stored += 1;
+    }
+    if let Some(profile) = &result.profile
+        && let Err(e) = storage.save_remote_profile(pubkey, profile)
+    {
+        eprintln!("[{label}] failed to store profile: {e}");
+    }
+    for interaction in &result.interactions {
+        if interaction.author == pubkey
+            && validate_interaction(interaction).is_ok()
             && verify_interaction_signature(interaction).is_ok()
         {
             let _ = storage.save_interaction(interaction);
         }
     }
-
-    Ok(SyncResult {
-        posts: resp.posts,
-        remote_total: resp.total_count,
-    })
+    stored
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SyncResult {
+struct FrontendSyncResult {
     posts: Vec<Post>,
     remote_total: u64,
+}
+
+#[tauri::command]
+async fn sync_posts(
+    state: State<'_, Arc<AppState>>,
+    pubkey: String,
+) -> Result<FrontendSyncResult, String> {
+    let endpoint = state.endpoint.clone();
+    let storage = state.storage.clone();
+    let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
+
+    let result = sync::sync_from_peer(&endpoint, &storage, target, &pubkey)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let stored = process_sync_result(&storage, &pubkey, &result, "sync");
+    println!(
+        "[sync] stored {stored}/{} posts from {} (mode={:?})",
+        result.posts.len(),
+        short_id(&pubkey),
+        result.mode,
+    );
+
+    Ok(FrontendSyncResult {
+        posts: result.posts,
+        remote_total: result.remote_post_count,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,10 +300,8 @@ async fn get_sync_status(
 async fn fetch_older_posts(
     state: State<'_, Arc<AppState>>,
     pubkey: String,
-    limit: Option<u32>,
-) -> Result<SyncResult, String> {
-    // Reuse sync_posts logic -- known_ids handles the diff
-    sync_posts(state, pubkey, limit).await
+) -> Result<FrontendSyncResult, String> {
+    sync_posts(state, pubkey).await
 }
 
 // -- Interactions (likes/reposts) --
@@ -456,43 +458,15 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
-    match sync::fetch_remote_posts(&endpoint, target, &pubkey, 50, Vec::new()).await {
-        Ok(resp) => {
-            for post in &resp.posts {
-                if let Err(reason) = validate_post(post) {
-                    eprintln!("[follow-sync] rejected post {}: {reason}", &post.id);
-                    continue;
-                }
-                if let Err(reason) = verify_post_signature(post) {
-                    eprintln!(
-                        "[follow-sync] rejected post {} (bad sig): {reason}",
-                        &post.id
-                    );
-                    continue;
-                }
-                if let Err(e) = storage.insert_post(post) {
-                    eprintln!("[follow-sync] failed to store post: {e}");
-                }
-            }
-            if let Some(profile) = &resp.profile
-                && let Err(e) = storage.save_remote_profile(&pubkey, profile)
-            {
-                eprintln!("[follow-sync] failed to store profile: {e}");
-            }
-            for interaction in &resp.interactions {
-                if interaction.author == pubkey
-                    && validate_interaction(interaction).is_ok()
-                    && verify_interaction_signature(interaction).is_ok()
-                {
-                    let _ = storage.save_interaction(interaction);
-                }
-            }
+    match sync::sync_from_peer(&endpoint, &storage, target, &pubkey).await {
+        Ok(result) => {
+            let stored = process_sync_result(&storage, &pubkey, &result, "follow-sync");
             println!(
-                "[follow-sync] synced {} posts, {} interactions from {} (total_remote={})",
-                resp.posts.len(),
-                resp.interactions.len(),
+                "[follow-sync] stored {stored}/{} posts, {} interactions from {} (mode={:?})",
+                result.posts.len(),
+                result.interactions.len(),
                 short_id(&pubkey),
-                resp.total_count
+                result.mode,
             );
         }
         Err(e) => {
@@ -897,8 +871,7 @@ fn load_or_create_key(path: &std::path::Path) -> SecretKey {
     }
 }
 
-/// Forward catch-up sync: fetch posts newer than our newest local post.
-/// Falls back to a full initial sync if we have no local posts yet.
+/// Startup sync: sync all posts/interactions from a followed peer.
 async fn sync_peer_posts(
     endpoint: &Endpoint,
     storage: &Arc<Storage>,
@@ -910,62 +883,33 @@ async fn sync_peer_posts(
         Err(_) => return,
     };
 
-    // Send known post IDs so the responder returns only missing posts
-    let known_ids = storage.get_post_ids_by_author(pubkey).unwrap_or_default();
-
     for attempt in 1..=3 {
         println!(
-            "[startup-sync] syncing from {} (attempt {}/3, known_ids={})...",
+            "[startup-sync] syncing from {} (attempt {}/3)...",
             short_id(pubkey),
             attempt,
-            known_ids.len()
         );
         let start = std::time::Instant::now();
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(15),
-            sync::fetch_remote_posts(endpoint, target, pubkey, 50, known_ids.clone()),
+            std::time::Duration::from_secs(30),
+            sync::sync_from_peer(endpoint, storage, target, pubkey),
         )
         .await;
         let elapsed = start.elapsed();
 
         match result {
-            Ok(Ok(resp)) => {
-                for post in &resp.posts {
-                    if let Err(reason) = validate_post(post) {
-                        eprintln!("[startup-sync] rejected post {}: {reason}", &post.id);
-                        continue;
-                    }
-                    if let Err(reason) = verify_post_signature(post) {
-                        eprintln!(
-                            "[startup-sync] rejected post {} (bad sig): {reason}",
-                            &post.id
-                        );
-                        continue;
-                    }
-                    let _ = storage.insert_post(post);
-                }
-                if let Some(profile) = &resp.profile {
-                    let _ = storage.save_remote_profile(pubkey, profile);
-                }
-                for interaction in &resp.interactions {
-                    if interaction.author == pubkey
-                        && validate_interaction(interaction).is_ok()
-                        && verify_interaction_signature(interaction).is_ok()
-                    {
-                        let _ = storage.save_interaction(interaction);
-                    }
-                }
+            Ok(Ok(sync_result)) => {
+                let stored = process_sync_result(storage, pubkey, &sync_result, "startup-sync");
 
-                if !resp.posts.is_empty() || resp.profile.is_some() {
+                if stored > 0 || sync_result.profile.is_some() {
                     let _ = handle.emit("feed-updated", ());
                 }
                 println!(
-                    "[startup-sync] synced {} posts, {} interactions from {} in {:.1}s (total_remote={})",
-                    resp.posts.len(),
-                    resp.interactions.len(),
+                    "[startup-sync] stored {stored}/{} posts from {} in {:.1}s (mode={:?})",
+                    sync_result.posts.len(),
                     short_id(pubkey),
                     elapsed.as_secs_f64(),
-                    resp.total_count
+                    sync_result.mode,
                 );
                 return;
             }
@@ -1151,7 +1095,7 @@ pub fn run() {
                     println!("[startup-sync] done");
                 });
 
-                // Background backward drip sync: pages through older history slowly
+                // Background drip sync: periodically syncs each followed user
                 let drip_endpoint = endpoint.clone();
                 let drip_storage = storage_clone.clone();
                 let drip_handle = handle.clone();
@@ -1169,79 +1113,45 @@ pub fn run() {
                                 Err(_) => continue,
                             };
 
-                            let known_ids = drip_storage
-                                .get_post_ids_by_author(&f.pubkey)
-                                .unwrap_or_default();
-
-                            // Skip if we have no local posts (startup sync hasn't run yet)
-                            if known_ids.is_empty() {
-                                continue;
-                            }
-
-                            println!(
-                                "[drip-sync] syncing {} (known_ids={})",
-                                short_id(&f.pubkey),
-                                known_ids.len()
-                            );
+                            println!("[drip-sync] syncing {}", short_id(&f.pubkey),);
 
                             let result = tokio::time::timeout(
-                                std::time::Duration::from_secs(15),
-                                sync::fetch_remote_posts(
+                                std::time::Duration::from_secs(30),
+                                sync::sync_from_peer(
                                     &drip_endpoint,
+                                    &drip_storage,
                                     target,
                                     &f.pubkey,
-                                    50,
-                                    known_ids,
                                 ),
                             )
                             .await;
 
                             match result {
-                                Ok(Ok(resp)) => {
-                                    if resp.posts.is_empty() {
-                                        println!(
-                                            "[drip-sync] {} fully synced (total_remote={})",
-                                            short_id(&f.pubkey),
-                                            resp.total_count
-                                        );
+                                Ok(Ok(sync_result)) => {
+                                    if sync_result.posts.is_empty()
+                                        && sync_result.interactions.is_empty()
+                                    {
+                                        println!("[drip-sync] {} up to date", short_id(&f.pubkey),);
                                         continue;
                                     }
 
-                                    for post in &resp.posts {
-                                        if let Err(reason) = validate_post(post) {
-                                            eprintln!(
-                                                "[drip-sync] rejected post {}: {reason}",
-                                                &post.id
-                                            );
-                                            continue;
-                                        }
-                                        if let Err(reason) = verify_post_signature(post) {
-                                            eprintln!(
-                                                "[drip-sync] rejected post {} (bad sig): {reason}",
-                                                &post.id
-                                            );
-                                            continue;
-                                        }
-                                        let _ = drip_storage.insert_post(post);
-                                    }
-                                    for interaction in &resp.interactions {
-                                        if interaction.author == f.pubkey
-                                            && validate_interaction(interaction).is_ok()
-                                            && verify_interaction_signature(interaction).is_ok()
-                                        {
-                                            let _ = drip_storage.save_interaction(interaction);
-                                        }
-                                    }
+                                    let stored = process_sync_result(
+                                        &drip_storage,
+                                        &f.pubkey,
+                                        &sync_result,
+                                        "drip-sync",
+                                    );
 
-                                    any_work = true;
-                                    let _ = drip_handle.emit("feed-updated", ());
+                                    if stored > 0 {
+                                        any_work = true;
+                                        let _ = drip_handle.emit("feed-updated", ());
+                                    }
 
                                     println!(
-                                        "[drip-sync] fetched {} older posts, {} interactions from {} (total_remote={})",
-                                        resp.posts.len(),
-                                        resp.interactions.len(),
+                                        "[drip-sync] stored {stored}/{} posts from {} (mode={:?})",
+                                        sync_result.posts.len(),
                                         short_id(&f.pubkey),
-                                        resp.total_count
+                                        sync_result.mode,
                                     );
                                 }
                                 Ok(Err(e)) => {
@@ -1251,10 +1161,7 @@ pub fn run() {
                                     );
                                 }
                                 Err(_) => {
-                                    eprintln!(
-                                        "[drip-sync] timed out for {}",
-                                        short_id(&f.pubkey)
-                                    );
+                                    eprintln!("[drip-sync] timed out for {}", short_id(&f.pubkey));
                                 }
                             }
 

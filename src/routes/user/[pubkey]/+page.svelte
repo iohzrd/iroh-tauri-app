@@ -86,12 +86,12 @@
 
       const allPosts: Post[] = await invoke("get_user_posts", {
         pubkey,
-        limit: 50,
+        limit: 20,
         before: null,
         mediaFilter: mediaFilter === "all" ? null : mediaFilter,
       });
       posts = allPosts;
-      hasMore = allPosts.length >= 50;
+      hasMore = allPosts.length >= 20;
 
       const follows: FollowEntry[] = await invoke("get_follows");
       isFollowing = follows.some((f) => f.pubkey === pubkey);
@@ -114,12 +114,12 @@
     try {
       const newPosts: Post[] = await invoke("get_user_posts", {
         pubkey,
-        limit: 50,
+        limit: 20,
         before: null,
         mediaFilter: mediaFilter === "all" ? null : mediaFilter,
       });
       posts = newPosts;
-      hasMore = newPosts.length >= 50;
+      hasMore = newPosts.length >= 20;
     } catch (e) {
       console.error("Failed to reload posts:", e);
     }
@@ -144,13 +144,13 @@
       const oldest = posts[posts.length - 1];
       const olderPosts: Post[] = await invoke("get_user_posts", {
         pubkey,
-        limit: 50,
+        limit: 20,
         before: oldest.timestamp,
         mediaFilter: mediaFilter === "all" ? null : mediaFilter,
       });
       if (olderPosts.length > 0) {
         posts = [...posts, ...olderPosts];
-        hasMore = olderPosts.length >= 50;
+        hasMore = olderPosts.length >= 20;
       } else if (!isSelf && !peerOffline && mediaFilter === "all") {
         // Local posts exhausted -- try fetching from remote peer
         await fetchFromRemote();
@@ -169,17 +169,15 @@
     try {
       const result: SyncResult = await invoke("fetch_older_posts", {
         pubkey,
-        limit: 50,
       });
       remoteTotal = result.remote_total;
-      if (result.posts.length === 0) {
-        hasMore = false;
-      } else {
+      if (result.posts.length > 0) {
         posts = [...posts, ...result.posts];
-        hasMore = result.posts.length >= 50;
         // Refresh sync status
         syncStatus = await invoke("get_sync_status", { pubkey });
       }
+      // Full sync fetches everything, no more to load
+      hasMore = false;
     } catch {
       peerOffline = true;
       hasMore = false;

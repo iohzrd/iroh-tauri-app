@@ -257,6 +257,183 @@ impl Storage {
         Ok(count as u64)
     }
 
+    pub fn count_interactions_by_author(&self, author: &str) -> anyhow::Result<u64> {
+        let db = self.db.lock().unwrap();
+        let count: i64 = db.query_row(
+            "SELECT COUNT(*) FROM interactions WHERE author=?1",
+            params![author],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    pub fn newest_interaction_timestamp(&self, author: &str) -> anyhow::Result<u64> {
+        let db = self.db.lock().unwrap();
+        let ts: Option<i64> = db.query_row(
+            "SELECT MAX(timestamp) FROM interactions WHERE author=?1",
+            params![author],
+            |row| row.get(0),
+        )?;
+        Ok(ts.unwrap_or(0) as u64)
+    }
+
+    pub fn count_interactions_after(&self, author: &str, after_ts: u64) -> anyhow::Result<u64> {
+        let db = self.db.lock().unwrap();
+        let count: i64 = db.query_row(
+            "SELECT COUNT(*) FROM interactions WHERE author=?1 AND timestamp > ?2",
+            params![author, after_ts as i64],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Get interactions by author with timestamp > after_ts, paginated.
+    /// Returns interactions in ascending timestamp order for streaming.
+    pub fn get_interactions_after(
+        &self,
+        author: &str,
+        after_ts: u64,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<Vec<Interaction>> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare(
+            "SELECT id, author, kind, target_post_id, target_author, timestamp, signature
+             FROM interactions WHERE author=?1 AND timestamp > ?2
+             ORDER BY timestamp ASC LIMIT ?3 OFFSET ?4",
+        )?;
+        let mut rows = stmt.query(params![
+            author,
+            after_ts as i64,
+            limit as i64,
+            offset as i64
+        ])?;
+        let mut interactions = Vec::new();
+        while let Some(row) = rows.next()? {
+            interactions.push(Self::row_to_interaction(row)?);
+        }
+        Ok(interactions)
+    }
+
+    pub fn newest_post_timestamp(&self, author: &str) -> anyhow::Result<u64> {
+        let db = self.db.lock().unwrap();
+        let ts: Option<i64> = db.query_row(
+            "SELECT MAX(timestamp) FROM posts WHERE author=?1",
+            params![author],
+            |row| row.get(0),
+        )?;
+        Ok(ts.unwrap_or(0) as u64)
+    }
+
+    pub fn count_posts_after(&self, author: &str, after_ts: u64) -> anyhow::Result<u64> {
+        let db = self.db.lock().unwrap();
+        let count: i64 = db.query_row(
+            "SELECT COUNT(*) FROM posts WHERE author=?1 AND timestamp > ?2",
+            params![author, after_ts as i64],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Get posts by author with timestamp > after_ts, paginated by LIMIT/OFFSET.
+    /// Returns posts in ascending timestamp order for streaming.
+    pub fn get_posts_after(
+        &self,
+        author: &str,
+        after_ts: u64,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<Vec<Post>> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare(
+            "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature
+             FROM posts WHERE author=?1 AND timestamp > ?2
+             ORDER BY timestamp ASC LIMIT ?3 OFFSET ?4",
+        )?;
+        let mut rows = stmt.query(params![
+            author,
+            after_ts as i64,
+            limit as i64,
+            offset as i64
+        ])?;
+        let mut posts = Vec::new();
+        while let Some(row) = rows.next()? {
+            posts.push(Self::row_to_post(row)?);
+        }
+        Ok(posts)
+    }
+
+    /// Get posts by author whose IDs are NOT in the given set, paginated.
+    pub fn get_posts_not_in(
+        &self,
+        author: &str,
+        known_ids: &[String],
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<Vec<Post>> {
+        let db = self.db.lock().unwrap();
+        if known_ids.is_empty() {
+            // No known IDs = return all
+            let mut stmt = db.prepare(
+                "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature
+                 FROM posts WHERE author=?1
+                 ORDER BY timestamp ASC LIMIT ?2 OFFSET ?3",
+            )?;
+            let mut rows = stmt.query(params![author, limit as i64, offset as i64])?;
+            let mut posts = Vec::new();
+            while let Some(row) = rows.next()? {
+                posts.push(Self::row_to_post(row)?);
+            }
+            return Ok(posts);
+        }
+
+        // Build temp table for efficient NOT IN filtering
+        db.execute_batch("CREATE TEMP TABLE IF NOT EXISTS _sync_known_ids (id TEXT PRIMARY KEY)")?;
+        db.execute_batch("DELETE FROM _sync_known_ids")?;
+
+        let mut insert = db.prepare("INSERT OR IGNORE INTO _sync_known_ids (id) VALUES (?1)")?;
+        for id in known_ids {
+            insert.execute(params![id])?;
+        }
+        drop(insert);
+
+        let mut stmt = db.prepare(
+            "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.signature
+             FROM posts p
+             WHERE p.author=?1 AND p.id NOT IN (SELECT id FROM _sync_known_ids)
+             ORDER BY p.timestamp ASC LIMIT ?2 OFFSET ?3",
+        )?;
+        let mut rows = stmt.query(params![author, limit as i64, offset as i64])?;
+        let mut posts = Vec::new();
+        while let Some(row) = rows.next()? {
+            posts.push(Self::row_to_post(row)?);
+        }
+
+        db.execute_batch("DROP TABLE IF EXISTS _sync_known_ids")?;
+        Ok(posts)
+    }
+
+    /// Get all interactions by author, paginated ascending.
+    pub fn get_interactions_paged(
+        &self,
+        author: &str,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<Vec<Interaction>> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare(
+            "SELECT id, author, kind, target_post_id, target_author, timestamp, signature
+             FROM interactions WHERE author=?1
+             ORDER BY timestamp ASC LIMIT ?2 OFFSET ?3",
+        )?;
+        let mut rows = stmt.query(params![author, limit as i64, offset as i64])?;
+        let mut interactions = Vec::new();
+        while let Some(row) = rows.next()? {
+            interactions.push(Self::row_to_interaction(row)?);
+        }
+        Ok(interactions)
+    }
+
     fn row_to_post(row: &rusqlite::Row) -> anyhow::Result<Post> {
         let media_json: String = row.get(4)?;
         let media: Vec<MediaAttachment> = serde_json::from_str(&media_json)?;
