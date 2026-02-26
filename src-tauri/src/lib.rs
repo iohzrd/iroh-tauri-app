@@ -210,33 +210,22 @@ async fn get_user_posts(
 async fn sync_posts(
     state: State<'_, Arc<AppState>>,
     pubkey: String,
-    before: Option<u64>,
     limit: Option<u32>,
 ) -> Result<SyncResult, String> {
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
 
-    // Send known post IDs so the responder can diff and return only missing posts
     let known_ids = storage.get_post_ids_by_author(&pubkey).unwrap_or_default();
 
     println!(
-        "[sync] requesting posts from {} (known_ids={}, before={:?})...",
+        "[sync] requesting posts from {} (known_ids={})...",
         short_id(&pubkey),
-        known_ids.len(),
-        before
+        known_ids.len()
     );
-    let resp = sync::fetch_remote_posts(
-        &endpoint,
-        target,
-        &pubkey,
-        before,
-        None,
-        limit.unwrap_or(50),
-        known_ids,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let resp = sync::fetch_remote_posts(&endpoint, target, &pubkey, limit.unwrap_or(50), known_ids)
+        .await
+        .map_err(|e| e.to_string())?;
 
     println!(
         "[sync] received {} posts from {} (total_remote={})",
@@ -307,71 +296,10 @@ async fn get_sync_status(
 async fn fetch_older_posts(
     state: State<'_, Arc<AppState>>,
     pubkey: String,
-    before: u64,
     limit: Option<u32>,
 ) -> Result<SyncResult, String> {
-    let endpoint = state.endpoint.clone();
-    let storage = state.storage.clone();
-    let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
-
-    println!(
-        "[remote-fetch] fetching older posts from {} (before={})",
-        short_id(&pubkey),
-        before
-    );
-
-    let resp = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        sync::fetch_remote_posts(
-            &endpoint,
-            target,
-            &pubkey,
-            Some(before),
-            None,
-            limit.unwrap_or(50),
-            Vec::new(),
-        ),
-    )
-    .await
-    .map_err(|_| "peer offline or unreachable".to_string())?
-    .map_err(|e| e.to_string())?;
-
-    for post in &resp.posts {
-        if let Err(reason) = validate_post(post) {
-            eprintln!("[remote-fetch] rejected post {}: {reason}", &post.id);
-            continue;
-        }
-        if let Err(reason) = verify_post_signature(post) {
-            eprintln!(
-                "[remote-fetch] rejected post {} (bad sig): {reason}",
-                &post.id
-            );
-            continue;
-        }
-        if let Err(e) = storage.insert_post(post) {
-            eprintln!("[remote-fetch] failed to store post: {e}");
-        }
-    }
-
-    for interaction in &resp.interactions {
-        if interaction.author == pubkey
-            && validate_interaction(interaction).is_ok()
-            && verify_interaction_signature(interaction).is_ok()
-        {
-            let _ = storage.save_interaction(interaction);
-        }
-    }
-
-    println!(
-        "[remote-fetch] fetched {} older posts from {}",
-        resp.posts.len(),
-        short_id(&pubkey)
-    );
-
-    Ok(SyncResult {
-        posts: resp.posts,
-        remote_total: resp.total_count,
-    })
+    // Reuse sync_posts logic -- known_ids handles the diff
+    sync_posts(state, pubkey, limit).await
 }
 
 // -- Interactions (likes/reposts) --
@@ -528,7 +456,7 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
-    match sync::fetch_remote_posts(&endpoint, target, &pubkey, None, None, 50, Vec::new()).await {
+    match sync::fetch_remote_posts(&endpoint, target, &pubkey, 50, Vec::new()).await {
         Ok(resp) => {
             for post in &resp.posts {
                 if let Err(reason) = validate_post(post) {
@@ -995,7 +923,7 @@ async fn sync_peer_posts(
         let start = std::time::Instant::now();
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(15),
-            sync::fetch_remote_posts(endpoint, target, pubkey, None, None, 50, known_ids.clone()),
+            sync::fetch_remote_posts(endpoint, target, pubkey, 50, known_ids.clone()),
         )
         .await;
         let elapsed = start.elapsed();
@@ -1241,25 +1169,18 @@ pub fn run() {
                                 Err(_) => continue,
                             };
 
-                            // Derive cursors from actual stored posts
-                            let (oldest_local, _newest_local) = drip_storage
-                                .get_author_post_range(&f.pubkey)
-                                .unwrap_or((None, None));
-
-                            // Skip if we have no local posts (startup sync hasn't run yet)
-                            let before = match oldest_local {
-                                Some(ts) => Some(ts),
-                                None => continue,
-                            };
-
                             let known_ids = drip_storage
                                 .get_post_ids_by_author(&f.pubkey)
                                 .unwrap_or_default();
 
+                            // Skip if we have no local posts (startup sync hasn't run yet)
+                            if known_ids.is_empty() {
+                                continue;
+                            }
+
                             println!(
-                                "[drip-sync] backward sync for {} (before={:?}, known_ids={})",
+                                "[drip-sync] syncing {} (known_ids={})",
                                 short_id(&f.pubkey),
-                                before,
                                 known_ids.len()
                             );
 
@@ -1269,8 +1190,6 @@ pub fn run() {
                                     &drip_endpoint,
                                     target,
                                     &f.pubkey,
-                                    before,
-                                    None,
                                     50,
                                     known_ids,
                                 ),

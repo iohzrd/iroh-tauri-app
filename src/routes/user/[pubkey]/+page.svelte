@@ -153,7 +153,7 @@
         hasMore = olderPosts.length >= 50;
       } else if (!isSelf && !peerOffline && mediaFilter === "all") {
         // Local posts exhausted -- try fetching from remote peer
-        await fetchFromRemote(oldest.timestamp);
+        await fetchFromRemote();
       } else {
         hasMore = false;
       }
@@ -164,12 +164,11 @@
     loadingMore = false;
   }
 
-  async function fetchFromRemote(before: number) {
+  async function fetchFromRemote() {
     fetchingRemote = true;
     try {
       const result: SyncResult = await invoke("fetch_older_posts", {
         pubkey,
-        before,
         limit: 50,
       });
       remoteTotal = result.remote_total;

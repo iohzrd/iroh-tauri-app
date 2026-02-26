@@ -236,25 +236,6 @@ impl Storage {
         Ok(posts)
     }
 
-    pub fn get_posts_by_author_after(
-        &self,
-        author: &str,
-        after: u64,
-        limit: usize,
-    ) -> anyhow::Result<Vec<Post>> {
-        let db = self.db.lock().unwrap();
-        let mut stmt = db.prepare(
-            "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
-             WHERE author=?1 AND timestamp > ?2 ORDER BY timestamp ASC LIMIT ?3",
-        )?;
-        let mut rows = stmt.query(params![author, after as i64, limit as i64])?;
-        let mut posts = Vec::new();
-        while let Some(row) = rows.next()? {
-            posts.push(Self::row_to_post(row)?);
-        }
-        Ok(posts)
-    }
-
     pub fn get_post_ids_by_author(&self, author: &str) -> anyhow::Result<Vec<String>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare("SELECT id FROM posts WHERE author=?1 ORDER BY timestamp ASC")?;
@@ -274,19 +255,6 @@ impl Storage {
             |row| row.get(0),
         )?;
         Ok(count as u64)
-    }
-
-    pub fn get_author_post_range(
-        &self,
-        author: &str,
-    ) -> anyhow::Result<(Option<u64>, Option<u64>)> {
-        let db = self.db.lock().unwrap();
-        let (min_ts, max_ts): (Option<i64>, Option<i64>) = db.query_row(
-            "SELECT MIN(timestamp), MAX(timestamp) FROM posts WHERE author=?1",
-            params![author],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        Ok((min_ts.map(|v| v as u64), max_ts.map(|v| v as u64)))
     }
 
     fn row_to_post(row: &rusqlite::Row) -> anyhow::Result<Post> {

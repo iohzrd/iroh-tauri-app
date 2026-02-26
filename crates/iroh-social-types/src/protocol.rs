@@ -24,11 +24,9 @@ pub const SYNC_ALPN: &[u8] = b"iroh-social/sync/1";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyncRequest {
     pub author: String,
-    pub before: Option<u64>,
-    pub after: Option<u64>,
     pub limit: u32,
     /// Post IDs the requester already has for this author.
-    /// The responder uses this to return only the missing posts.
+    /// The responder returns only posts not in this list.
     #[serde(default)]
     pub known_ids: Vec<String>,
 }
@@ -39,8 +37,6 @@ pub struct SyncResponse {
     #[serde(default)]
     pub profile: Option<Profile>,
     pub total_count: u64,
-    pub newest_ts: Option<u64>,
-    pub oldest_ts: Option<u64>,
     #[serde(default)]
     pub interactions: Vec<Interaction>,
 }

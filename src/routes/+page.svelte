@@ -140,7 +140,7 @@
       const follows: { pubkey: string }[] = await invoke("get_follows");
       const results = await Promise.allSettled(
         follows.map((f) =>
-          invoke("sync_posts", { pubkey: f.pubkey, before: null, limit: 50 }),
+          invoke("sync_posts", { pubkey: f.pubkey, limit: 50 }),
         ),
       );
       const failures = results.filter((r) => r.status === "rejected").length;

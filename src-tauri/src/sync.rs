@@ -37,13 +37,6 @@ impl ProtocolHandler for SyncHandler {
             .map_err(AcceptError::from_err)?;
 
         let req: SyncRequest = serde_json::from_slice(&req_bytes).map_err(AcceptError::from_err)?;
-        println!(
-            "[sync-server] request: author={}, before={:?}, after={:?}, limit={}",
-            short_id(&req.author),
-            req.before,
-            req.after,
-            req.limit
-        );
 
         let map_err =
             |e: anyhow::Error| AcceptError::from_err(std::io::Error::other(e.to_string()));
@@ -52,47 +45,36 @@ impl ProtocolHandler for SyncHandler {
             .storage
             .count_posts_by_author(&req.author)
             .map_err(map_err)?;
-        let (oldest_ts, newest_ts) = self
-            .storage
-            .get_author_post_range(&req.author)
-            .map_err(map_err)?;
 
         println!(
-            "[sync-server] local state for {}: total={}, oldest={:?}, newest={:?}, after={:?}, known_ids={}",
+            "[sync-server] request: author={}, limit={}, known_ids={}, total={}",
             short_id(&req.author),
-            total_count,
-            oldest_ts,
-            newest_ts,
-            req.after,
-            req.known_ids.len()
+            req.limit,
+            req.known_ids.len(),
+            total_count
         );
 
-        // If the requester sent known_ids, filter to only missing posts
-        let mut posts = if !req.known_ids.is_empty() {
+        // Fetch all posts by this author, filter out ones the requester already has
+        let all_posts = self
+            .storage
+            .get_posts_by_author(&req.author, req.limit as usize, None, None)
+            .map_err(map_err)?;
+
+        let mut posts = if req.known_ids.is_empty() {
+            all_posts
+        } else {
             let known: HashSet<&str> = req.known_ids.iter().map(|s| s.as_str()).collect();
-            let all_posts = self
-                .storage
-                .get_posts_by_author(&req.author, req.limit as usize, None, None)
-                .map_err(map_err)?;
             all_posts
                 .into_iter()
                 .filter(|p| !known.contains(p.id.as_str()))
                 .collect()
-        } else if let Some(after) = req.after {
-            self.storage
-                .get_posts_by_author_after(&req.author, after, req.limit as usize)
-                .map_err(map_err)?
-        } else {
-            self.storage
-                .get_posts_by_author(&req.author, req.limit as usize, req.before, None)
-                .map_err(map_err)?
         };
         posts.truncate(req.limit as usize);
 
         // Include interactions by this author
         let interactions = self
             .storage
-            .get_interactions_by_author(&req.author, req.limit as usize, req.before)
+            .get_interactions_by_author(&req.author, req.limit as usize, None)
             .map_err(map_err)?;
 
         // Include our own profile in the response
@@ -111,8 +93,6 @@ impl ProtocolHandler for SyncHandler {
             posts,
             profile,
             total_count,
-            newest_ts,
-            oldest_ts,
             interactions,
         };
         let resp_bytes = serde_json::to_vec(&resp).map_err(AcceptError::from_err)?;
@@ -122,32 +102,20 @@ impl ProtocolHandler for SyncHandler {
             .map_err(AcceptError::from_err)?;
         send.finish().map_err(AcceptError::from_err)?;
 
-        println!(
-            "[sync-server] sent response, waiting for peer to close connection {}",
-            short_id(&remote.to_string())
-        );
-
         // Wait for the peer to close the connection.
         // This is the canonical iroh pattern to prevent the Connection drop from
         // sending ApplicationClose(error_code: 0) before the client reads all data.
         conn.closed().await;
 
-        println!(
-            "[sync-server] completed sync for {}",
-            short_id(&remote.to_string())
-        );
-
         Ok(())
     }
 }
 
-/// Client: fetch paginated posts from a remote peer
+/// Client: fetch posts from a remote peer, excluding posts we already have
 pub async fn fetch_remote_posts(
     endpoint: &Endpoint,
     target: EndpointId,
     author: &str,
-    before: Option<u64>,
-    after: Option<u64>,
     limit: u32,
     known_ids: Vec<String>,
 ) -> anyhow::Result<SyncResponse> {
@@ -187,8 +155,6 @@ pub async fn fetch_remote_posts(
 
     let req = SyncRequest {
         author: author.to_string(),
-        before,
-        after,
         limit,
         known_ids,
     };
