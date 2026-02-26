@@ -4,9 +4,16 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import Avatar from "$lib/Avatar.svelte";
-  import Timeago from "$lib/Timeago.svelte";
-  import type { StoredMessage, Profile } from "$lib/types";
-  import { shortId, getDisplayName, getCachedAvatarTicket } from "$lib/utils";
+  import type { StoredMessage, Profile, PendingAttachment } from "$lib/types";
+  import {
+    shortId,
+    getDisplayName,
+    getCachedAvatarTicket,
+    isImage,
+    isVideo,
+    formatSize,
+  } from "$lib/utils";
+  import { createBlobCache } from "$lib/blobs";
 
   let pubkey: string = $derived(page.params.pubkey ?? "");
   let nodeId = $state("");
@@ -21,6 +28,14 @@
   let loadingMore = $state(false);
   let messagesContainer = $state<HTMLDivElement>(null!);
   let shouldAutoScroll = $state(true);
+  let peerTyping = $state(false);
+  let typingTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastTypingSent = 0;
+  let attachments = $state<PendingAttachment[]>([]);
+  let uploading = $state(false);
+  let fileInput = $state<HTMLInputElement>(null!);
+
+  const blobs = createBlobCache();
 
   async function init() {
     try {
@@ -41,6 +56,17 @@
       loading = false;
 
       await invoke("mark_dm_read", { peerPubkey: pubkey });
+
+      // Send read receipts for unread incoming messages
+      for (const msg of msgs) {
+        if (msg.from_pubkey !== nodeId && !msg.read) {
+          invoke("send_dm_signal", {
+            to: pubkey,
+            signalType: "read",
+            messageId: msg.id,
+          }).catch(() => {});
+        }
+      }
 
       requestAnimationFrame(() => scrollToBottom());
     } catch {
@@ -93,18 +119,87 @@
     loadingMore = false;
   }
 
+  function sendTypingSignal() {
+    const now = Date.now();
+    if (now - lastTypingSent < 3000) return;
+    lastTypingSent = now;
+    invoke("send_dm_signal", {
+      to: pubkey,
+      signalType: "typing",
+      messageId: null,
+    }).catch(() => {});
+  }
+
+  function handleInput() {
+    sendTypingSignal();
+  }
+
+  async function handleFiles(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = input.files;
+    if (!files || files.length === 0) return;
+
+    uploading = true;
+    for (const file of files) {
+      try {
+        const buffer = await file.arrayBuffer();
+        const data = Array.from(new Uint8Array(buffer));
+        const result: { hash: string; ticket: string } = await invoke(
+          "add_blob_bytes",
+          { data },
+        );
+
+        const previewUrl = URL.createObjectURL(file);
+        attachments = [
+          ...attachments,
+          {
+            hash: result.hash,
+            ticket: result.ticket,
+            mime_type: file.type || "application/octet-stream",
+            filename: file.name,
+            size: file.size,
+            previewUrl,
+          },
+        ];
+      } catch (e) {
+        console.error("Failed to upload file:", file.name, e);
+      }
+    }
+    uploading = false;
+    input.value = "";
+  }
+
+  function removeAttachment(index: number) {
+    const removed = attachments[index];
+    if (removed) URL.revokeObjectURL(removed.previewUrl);
+    attachments = attachments.filter((_, i) => i !== index);
+  }
+
   async function sendMessage() {
     const text = messageText.trim();
-    if (!text || sending) return;
+    if ((!text && attachments.length === 0) || sending) return;
     sending = true;
     sendError = "";
     try {
+      const media =
+        attachments.length > 0
+          ? attachments.map(({ hash, ticket, mime_type, filename, size }) => ({
+              hash,
+              ticket,
+              mime_type,
+              filename,
+              size,
+            }))
+          : null;
       const msg: StoredMessage = await invoke("send_dm", {
         to: pubkey,
         content: text,
+        media,
       });
       messages = [...messages, msg];
       messageText = "";
+      for (const a of attachments) URL.revokeObjectURL(a.previewUrl);
+      attachments = [];
       requestAnimationFrame(() => scrollToBottom());
     } catch (e) {
       console.error("Failed to send message:", e);
@@ -169,6 +264,12 @@
         if (payload.from === pubkey) {
           messages = [...messages, payload.message];
           invoke("mark_dm_read", { peerPubkey: pubkey });
+          // Send read receipt
+          invoke("send_dm_signal", {
+            to: pubkey,
+            signalType: "read",
+            messageId: payload.message.id,
+          }).catch(() => {});
           if (shouldAutoScroll) {
             requestAnimationFrame(() => scrollToBottom());
           }
@@ -183,11 +284,42 @@
         );
       }),
     );
+    unlisteners.push(
+      listen("typing-indicator", (event) => {
+        const payload = event.payload as { peer: string };
+        if (payload.peer === pubkey) {
+          peerTyping = true;
+          if (typingTimeout) clearTimeout(typingTimeout);
+          typingTimeout = setTimeout(() => {
+            peerTyping = false;
+          }, 4000);
+        }
+      }),
+    );
+    unlisteners.push(
+      listen("dm-read", (event) => {
+        const payload = event.payload as { message_id: string };
+        messages = messages.map((m) =>
+          m.id === payload.message_id ? { ...m, read: true } : m,
+        );
+      }),
+    );
     return () => {
+      if (typingTimeout) clearTimeout(typingTimeout);
+      blobs.revokeAll();
+      for (const a of attachments) URL.revokeObjectURL(a.previewUrl);
       unlisteners.forEach((p) => p.then((fn) => fn()));
     };
   });
 </script>
+
+<input
+  type="file"
+  multiple
+  class="hidden-file-input"
+  bind:this={fileInput}
+  onchange={handleFiles}
+/>
 
 {#if loading}
   <div class="loading">
@@ -232,11 +364,44 @@
           class:received={msg.from_pubkey !== nodeId}
         >
           <div class="message-bubble">
-            <p class="message-text">{msg.content}</p>
+            {#if msg.media && msg.media.length > 0}
+              <div class="message-media">
+                {#each msg.media as att}
+                  {#if isImage(att.mime_type)}
+                    {#await blobs.getBlobUrl(att) then url}
+                      <img src={url} alt={att.filename} class="media-img" />
+                    {/await}
+                  {:else if isVideo(att.mime_type)}
+                    {#await blobs.getBlobUrl(att) then url}
+                      <video
+                        src={url}
+                        controls
+                        class="media-video"
+                        preload="metadata"
+                      ></video>
+                    {/await}
+                  {:else}
+                    <button
+                      class="file-attachment"
+                      onclick={() => blobs.downloadFile(att)}
+                    >
+                      <span class="file-icon">&#128196;</span>
+                      <span class="file-name">{att.filename}</span>
+                      <span class="file-size">{formatSize(att.size)}</span>
+                    </button>
+                  {/if}
+                {/each}
+              </div>
+            {/if}
+            {#if msg.content}
+              <p class="message-text">{msg.content}</p>
+            {/if}
             <div class="message-meta">
               <span class="message-time">{formatTime(msg.timestamp)}</span>
               {#if msg.from_pubkey === nodeId}
-                {#if msg.delivered}
+                {#if msg.read}
+                  <span class="delivery-status read" title="Read">Read</span>
+                {:else if msg.delivered}
                   <span class="delivery-status delivered" title="Delivered"
                     >Delivered</span
                   >
@@ -254,23 +419,61 @@
           <p>No messages yet. Say hello!</p>
         </div>
       {/each}
+
+      {#if peerTyping}
+        <div class="typing-indicator">
+          <span class="typing-name">{peerName}</span> is typing
+          <span class="typing-dots">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </span>
+        </div>
+      {/if}
     </div>
 
     {#if sendError}
       <div class="send-error">{sendError}</div>
     {/if}
+
+    {#if attachments.length > 0}
+      <div class="attachment-preview">
+        {#each attachments as att, i}
+          <div class="attachment-item">
+            {#if isImage(att.mime_type)}
+              <img src={att.previewUrl} alt={att.filename} />
+            {:else}
+              <span class="att-file">{att.filename}</span>
+            {/if}
+            <button class="att-remove" onclick={() => removeAttachment(i)}
+              >x</button
+            >
+          </div>
+        {/each}
+      </div>
+    {/if}
+
     <div class="compose-bar">
+      <button
+        class="attach-btn"
+        onclick={() => fileInput?.click()}
+        disabled={uploading}
+        title="Attach file"
+      >
+        {uploading ? "..." : "+"}
+      </button>
       <textarea
         class="compose-input"
         placeholder="Type a message..."
         bind:value={messageText}
         onkeydown={handleKeydown}
+        oninput={handleInput}
         rows="1"
       ></textarea>
       <button
         class="send-btn"
         onclick={sendMessage}
-        disabled={!messageText.trim() || sending}
+        disabled={(!messageText.trim() && attachments.length === 0) || sending}
       >
         {sending ? "..." : "Send"}
       </button>
@@ -279,6 +482,10 @@
 {/if}
 
 <style>
+  .hidden-file-input {
+    display: none;
+  }
+
   .chat-layout {
     display: flex;
     flex-direction: column;
@@ -407,6 +614,62 @@
     line-height: 1.4;
   }
 
+  .message-media {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .media-img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    object-fit: contain;
+    cursor: pointer;
+  }
+
+  .media-video {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+  }
+
+  .file-attachment {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #2a2a4a;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    color: #c4b5fd;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .file-attachment:hover {
+    background: #3a3a5a;
+  }
+
+  .file-icon {
+    font-size: 1rem;
+  }
+
+  .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-size {
+    color: #888;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
   .message-meta {
     display: flex;
     align-items: center;
@@ -433,6 +696,63 @@
     color: #a7f3d0;
   }
 
+  .delivery-status.read {
+    color: #60a5fa;
+  }
+
+  .sent .delivery-status.read {
+    color: #60a5fa;
+  }
+
+  .typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0;
+    color: #888;
+    font-size: 0.75rem;
+    font-style: italic;
+  }
+
+  .typing-name {
+    color: #a78bfa;
+    font-style: normal;
+    font-weight: 600;
+  }
+
+  .typing-dots {
+    display: inline-flex;
+    gap: 2px;
+    margin-left: 2px;
+  }
+
+  .dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #888;
+    animation: bounce 1.2s infinite;
+  }
+
+  .dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes bounce {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+    }
+    30% {
+      transform: translateY(-4px);
+    }
+  }
+
   .empty-chat {
     flex: 1;
     display: flex;
@@ -450,6 +770,64 @@
     border-top: 1px solid #f8717140;
   }
 
+  .attachment-preview {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid #2a2a4a;
+    background: #16213e;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  .attachment-item {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .attachment-item img {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #2a2a4a;
+  }
+
+  .att-file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    background: #2a2a4a;
+    border-radius: 6px;
+    font-size: 0.6rem;
+    color: #888;
+    text-align: center;
+    padding: 4px;
+    word-break: break-all;
+    overflow: hidden;
+  }
+
+  .att-remove {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #f87171;
+    color: white;
+    border: none;
+    font-size: 0.6rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    font-family: inherit;
+  }
+
   .compose-bar {
     display: flex;
     align-items: flex-end;
@@ -458,6 +836,32 @@
     border-top: 1px solid #2a2a4a;
     background: #1a1a2e;
     flex-shrink: 0;
+  }
+
+  .attach-btn {
+    background: none;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    color: #a78bfa;
+    font-size: 1.1rem;
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-family: inherit;
+  }
+
+  .attach-btn:hover:not(:disabled) {
+    background: #2a2a4a;
+    color: #c4b5fd;
+  }
+
+  .attach-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .compose-input {

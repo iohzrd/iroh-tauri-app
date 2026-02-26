@@ -97,6 +97,9 @@
         <span class="unread-badge">{unreadDmCount}</span>
       {/if}
     </a>
+    <a href="/bookmarks" class:active={page.url.pathname === "/bookmarks"}
+      >Saved</a
+    >
     <a href="/follows" class:active={page.url.pathname === "/follows"}
       >Follows</a
     >
@@ -112,9 +115,6 @@
           class:connected={status.has_relay}
           class:disconnected={!status.has_relay}
         ></span>
-        {#if status.follow_count > 0}
-          <span class="peer-count">{status.follow_count}</span>
-        {/if}
       </span>
     {/if}
   </nav>
@@ -158,15 +158,16 @@
   nav a {
     flex: 1;
     text-align: center;
-    padding: 0.75rem;
-    color: #888;
+    padding: 0.7rem 0.25rem;
+    color: #777;
     text-decoration: none;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     transition:
-      color 0.2s,
-      border-color 0.2s;
+      color 0.15s,
+      border-color 0.15s;
     border-bottom: 2px solid transparent;
+    white-space: nowrap;
   }
 
   nav a:hover {
@@ -181,16 +182,16 @@
   .unread-badge {
     background: #7c3aed;
     color: white;
-    font-size: 0.6rem;
+    font-size: 0.55rem;
     font-weight: 700;
     border-radius: 999px;
-    min-width: 16px;
-    height: 16px;
+    min-width: 14px;
+    height: 14px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 4px;
-    margin-left: 2px;
+    padding: 0 3px;
+    margin-left: 1px;
     vertical-align: super;
   }
 
@@ -198,7 +199,7 @@
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    padding: 0 0.75rem;
+    padding: 0 0.5rem;
     flex-shrink: 0;
   }
 
@@ -216,11 +217,6 @@
   .status-dot.disconnected {
     background: #ef4444;
     box-shadow: 0 0 4px #ef444480;
-  }
-
-  .peer-count {
-    font-size: 0.7rem;
-    color: #666;
   }
 
   main {

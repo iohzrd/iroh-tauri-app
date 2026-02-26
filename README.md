@@ -13,7 +13,7 @@ Each node gets a permanent cryptographic identity (stored in `identity.key`). Yo
 **Four protocol layers handle all communication:**
 
 - **Gossip** -- Real-time pub/sub. When you post, it broadcasts instantly to anyone following you. Each user has a topic derived from their public key.
-- **Sync** -- Historical pull. When you follow someone, their existing posts are fetched via a custom QUIC protocol. On startup, all followed users are synced in parallel.
+- **Sync** -- Historical pull. When you follow someone, their existing posts are fetched via a custom QUIC protocol with a three-tier streaming protocol (timestamp catch-up, ID diff, or up-to-date). On startup, all followed users are synced in parallel with bounded concurrency.
 - **Blobs** -- Content-addressed media storage. Images, videos, and files are stored locally and transferred peer-to-peer using iroh-blobs.
 - **DM** -- End-to-end encrypted direct messaging. A Noise IK handshake over QUIC establishes a shared secret between peers, which seeds a Double Ratchet providing per-message forward secrecy with ChaCha20-Poly1305 encryption. Messages are sent directly peer-to-peer with no intermediary, and queued locally for retry when the recipient is offline.
 
@@ -22,10 +22,18 @@ All data is persisted in a local SQLite database. The app works offline and sync
 ## Features
 
 - Create and delete posts (text + media attachments)
+- Likes, reposts, and replies with real-time interaction counts
 - Follow/unfollow users by Node ID
-- View user profiles with their post history
-- End-to-end encrypted direct messages with delivery status
+- View user profiles with their post history and media filters
+- Profile page with your own post history
+- Thread view with inline reply composer
+- End-to-end encrypted direct messages with typing indicators and read receipts
+- DM media attachments (images, videos, files)
 - Offline message queuing with automatic retry
+- Notifications feed (replies, likes, reposts, new followers)
+- Bookmarks (private, local-only saved posts)
+- First-run onboarding flow
+- Inline reply context showing parent post preview
 - Image lightbox for fullscreen viewing
 - File downloads for non-media attachments
 - Infinite scroll with cursor-based pagination
@@ -74,6 +82,9 @@ See [todos/community-server.md](todos/community-server.md) for the full design d
 End-to-end encrypted direct messaging over a custom QUIC protocol (`iroh-social/dm/1`). E2E encryption uses X25519 key exchange derived from each user's existing ed25519 identity, with a Noise IK handshake for session establishment and a Double Ratchet for per-message forward secrecy. Messages are encrypted such that only the two participants can read them -- not relay servers, not community servers, not anyone.
 
 - Noise IK + Double Ratchet (Signal Protocol pattern) with ChaCha20-Poly1305
+- Typing indicators (debounced, sent over encrypted channel)
+- Read receipts (sent back to peer on conversation open)
+- Media attachments in DMs (images, videos, files)
 - Offline message queuing with background retry (60-second outbox flush)
 - Delivery acknowledgment over QUIC with real-time status updates
 - Conversation list with unread badges and message previews

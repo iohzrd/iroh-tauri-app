@@ -618,11 +618,6 @@ async fn fetch_blob_bytes(
 
     // Try local store first -- no lock held
     if let Ok(bytes) = store.get_bytes(ticket.hash()).await {
-        println!(
-            "[blob] found {} locally ({} bytes)",
-            ticket.hash(),
-            bytes.len()
-        );
         return Ok(bytes.to_vec());
     }
 
@@ -852,6 +847,72 @@ async fn get_unread_dm_count(state: State<'_, Arc<AppState>>) -> Result<u32, Str
     state
         .storage
         .get_total_unread_count()
+        .map_err(|e| e.to_string())
+}
+
+/// Send a lightweight DM signal (typing indicator or read receipt).
+/// Does not create a stored message -- just encrypts and sends over QUIC.
+#[tauri::command]
+async fn send_dm_signal(
+    state: State<'_, Arc<AppState>>,
+    to: String,
+    signal_type: String,
+    message_id: Option<String>,
+) -> Result<(), String> {
+    use iroh_social_types::DmPayload;
+
+    let payload = match signal_type.as_str() {
+        "typing" => DmPayload::Typing,
+        "read" => {
+            let id = message_id.ok_or("message_id required for read signal")?;
+            DmPayload::Read { message_id: id }
+        }
+        other => return Err(format!("unknown signal type: {other}")),
+    };
+
+    let dm_handler = state.dm.clone();
+    let endpoint = state.endpoint.clone();
+
+    // Best-effort: don't fail if peer is offline
+    tokio::spawn(async move {
+        if let Err(e) = dm_handler.send_signal(&endpoint, &to, payload).await {
+            println!(
+                "[dm-signal] failed to send {signal_type} to {}: {e}",
+                short_id(&to)
+            );
+        }
+    });
+
+    Ok(())
+}
+
+// -- Bookmarks --
+
+#[tauri::command]
+async fn toggle_bookmark(state: State<'_, Arc<AppState>>, post_id: String) -> Result<bool, String> {
+    state
+        .storage
+        .toggle_bookmark(&post_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn is_bookmarked(state: State<'_, Arc<AppState>>, post_id: String) -> Result<bool, String> {
+    state
+        .storage
+        .is_bookmarked(&post_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_bookmarks(
+    state: State<'_, Arc<AppState>>,
+    limit: Option<usize>,
+    before: Option<u64>,
+) -> Result<Vec<Post>, String> {
+    state
+        .storage
+        .get_bookmarks(limit.unwrap_or(20), before)
         .map_err(|e| e.to_string())
 }
 
@@ -1262,6 +1323,10 @@ pub fn run() {
             delete_dm_message,
             flush_dm_outbox,
             get_unread_dm_count,
+            send_dm_signal,
+            toggle_bookmark,
+            is_bookmarked,
+            get_bookmarks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

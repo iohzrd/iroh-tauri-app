@@ -302,6 +302,34 @@ impl DmHandler {
         Ok((sent, failed))
     }
 
+    /// Send a lightweight DM signal (typing, read receipt) without storing a message.
+    pub async fn send_signal(
+        &self,
+        endpoint: &Endpoint,
+        peer_pubkey: &str,
+        payload: DmPayload,
+    ) -> anyhow::Result<()> {
+        let mut ratchet = self.get_or_establish_session(endpoint, peer_pubkey).await?;
+
+        let plaintext = serde_json::to_vec(&payload)?;
+        let (header, ciphertext) = ratchet.encrypt(&plaintext);
+
+        let ratchet_json = serde_json::to_string(&ratchet)?;
+        self.storage
+            .save_ratchet_session(peer_pubkey, &ratchet_json, now_millis())?;
+
+        let envelope = EncryptedEnvelope {
+            sender: self.my_pubkey_str.clone(),
+            ratchet_header: ratchet_header_to_wire(&header),
+            ciphertext,
+        };
+
+        self.try_send_envelope(endpoint, peer_pubkey, &envelope)
+            .await?;
+
+        Ok(())
+    }
+
     /// Handle an incoming handshake (Noise IK responder side).
     fn handle_handshake(
         &self,
@@ -415,6 +443,9 @@ impl DmHandler {
             }
             DmPayload::Read { message_id } => {
                 self.storage.mark_dm_read_by_id(&message_id)?;
+                let _ = self
+                    .app_handle
+                    .emit("dm-read", serde_json::json!({ "message_id": message_id }));
             }
             DmPayload::Typing => {
                 let _ = self.app_handle.emit(

@@ -1,24 +1,19 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
-  import Avatar from "$lib/Avatar.svelte";
-  import PostActions from "$lib/PostActions.svelte";
-  import ReplyComposer from "$lib/ReplyComposer.svelte";
-  import type { MediaAttachment, Post, PendingAttachment } from "$lib/types";
+  import PostCard from "$lib/PostCard.svelte";
+  import { createBlobCache } from "$lib/blobs";
+  import type { Post, PendingAttachment } from "$lib/types";
   import {
     shortId,
-    getDisplayName,
-    getCachedAvatarTicket,
     seedOwnProfile,
     evictDisplayName,
     copyToClipboard,
-    linkify,
     isImage,
     isVideo,
-    formatSize,
   } from "$lib/utils";
 
   const MAX_POST_LENGTH = 10_000;
@@ -44,35 +39,7 @@
   let lightboxAlt = $state("");
   let sentinel = $state<HTMLDivElement>(null!);
 
-  // Cache for fetched blob URLs so we don't re-fetch
-  const blobUrlCache = new Map<string, string>();
-
-  function collectMediaHashes(postList: Post[]): Set<string> {
-    const hashes = new Set<string>();
-    for (const p of postList) {
-      if (p.media) {
-        for (const m of p.media) hashes.add(m.hash);
-      }
-    }
-    return hashes;
-  }
-
-  function revokeStaleBlobUrls(newPosts: Post[]) {
-    const activeHashes = collectMediaHashes(newPosts);
-    for (const [hash, url] of blobUrlCache) {
-      if (!activeHashes.has(hash)) {
-        URL.revokeObjectURL(url);
-        blobUrlCache.delete(hash);
-      }
-    }
-  }
-
-  function revokeAllBlobUrls() {
-    for (const url of blobUrlCache.values()) {
-      URL.revokeObjectURL(url);
-    }
-    blobUrlCache.clear();
-  }
+  const blobs = createBlobCache();
 
   function showToast(message: string, type: "error" | "success" = "error") {
     toastMessage = message;
@@ -89,6 +56,12 @@
   async function init() {
     try {
       nodeId = await invoke("get_node_id");
+      // Redirect to welcome screen on first run (no profile)
+      const profile = await invoke("get_my_profile");
+      if (!profile) {
+        goto("/welcome");
+        return;
+      }
       await seedOwnProfile(nodeId);
       await loadFeed();
       loading = false;
@@ -103,7 +76,6 @@
         limit: 20,
         before: null,
       });
-      revokeStaleBlobUrls(newPosts);
       posts = newPosts;
       hasMore = newPosts.length >= 20;
     } catch (e) {
@@ -214,7 +186,6 @@
         content: newPost,
         media: media.length > 0 ? media : null,
       });
-      // Clean up preview URLs
       for (const a of attachments) URL.revokeObjectURL(a.previewUrl);
       newPost = "";
       attachments = [];
@@ -244,36 +215,6 @@
 
   function cancelDelete() {
     pendingDeleteId = null;
-  }
-
-  async function getBlobUrl(attachment: MediaAttachment): Promise<string> {
-    const cached = blobUrlCache.get(attachment.hash);
-    if (cached) return cached;
-
-    const bytes: number[] = await invoke("fetch_blob_bytes", {
-      ticket: attachment.ticket,
-    });
-    const blob = new Blob([new Uint8Array(bytes)], {
-      type: attachment.mime_type,
-    });
-    const url = URL.createObjectURL(blob);
-    blobUrlCache.set(attachment.hash, url);
-    return url;
-  }
-
-  async function downloadFile(att: MediaAttachment) {
-    try {
-      const url = await getBlobUrl(att);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = att.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (e) {
-      showToast(`Failed to download ${att.filename}`);
-      console.error("Download failed:", e);
-    }
   }
 
   function handleKey(e: KeyboardEvent) {
@@ -364,7 +305,7 @@
       window.removeEventListener("keydown", handleGlobalKey);
       window.removeEventListener("scroll", handleScroll);
       unlisteners.forEach((p) => p.then((fn) => fn()));
-      revokeAllBlobUrls();
+      blobs.revokeAll();
     };
   });
 </script>
@@ -480,114 +421,26 @@
 
   <div class="feed">
     {#each posts as post (post.id)}
-      <article class="post">
-        <div class="post-header">
-          {#await getDisplayName(post.author, nodeId)}
-            {@const fallback =
-              post.author === nodeId ? "You" : shortId(post.author)}
-            <a href="/user/{post.author}" class="author-link">
-              <Avatar
-                pubkey={post.author}
-                name={fallback}
-                isSelf={post.author === nodeId}
-                ticket={getCachedAvatarTicket(post.author)}
-              />
-              <span class="author" class:self={post.author === nodeId}>
-                {fallback}
-              </span>
-            </a>
-          {:then name}
-            <a href="/user/{post.author}" class="author-link">
-              <Avatar
-                pubkey={post.author}
-                {name}
-                isSelf={post.author === nodeId}
-                ticket={getCachedAvatarTicket(post.author)}
-              />
-              <span class="author" class:self={post.author === nodeId}>
-                {name}
-              </span>
-            </a>
-          {/await}
-          <div class="post-header-right">
-            <a href="/post/{post.id}" class="time-link">
-              <Timeago timestamp={post.timestamp} />
-            </a>
-            {#if post.author === nodeId}
-              <button class="delete-btn" onclick={() => confirmDelete(post.id)}>
-                &times;
-              </button>
-            {/if}
-          </div>
-        </div>
-        {#if post.content}
-          <p class="post-content">{@html linkify(post.content)}</p>
-        {/if}
-        {#if post.media && post.media.length > 0}
-          <div class="post-media" class:grid={post.media.length > 1}>
-            {#each post.media as att (att.hash)}
-              {#if isImage(att.mime_type)}
-                {#await getBlobUrl(att)}
-                  <div class="media-placeholder">Loading...</div>
-                {:then url}
-                  <button
-                    class="media-img-btn"
-                    onclick={() => {
-                      lightboxSrc = url;
-                      lightboxAlt = att.filename;
-                    }}
-                  >
-                    <img src={url} alt={att.filename} class="media-img" />
-                  </button>
-                {:catch}
-                  <div class="media-placeholder">Failed to load</div>
-                {/await}
-              {:else if isVideo(att.mime_type)}
-                {#await getBlobUrl(att)}
-                  <div class="media-placeholder">Loading...</div>
-                {:then url}
-                  <video src={url} controls class="media-video">
-                    <track kind="captions" />
-                  </video>
-                {:catch}
-                  <div class="media-placeholder">Failed to load</div>
-                {/await}
-              {:else}
-                <button class="media-file" onclick={() => downloadFile(att)}>
-                  <span>{att.filename}</span>
-                  <span class="file-size">{formatSize(att.size)}</span>
-                  <span class="download-label">Download</span>
-                </button>
-              {/if}
-            {/each}
-          </div>
-        {/if}
-        <PostActions
-          postId={post.id}
-          postAuthor={post.author}
-          onreply={() => {
-            replyingTo = replyingTo?.id === post.id ? null : post;
-          }}
-        />
-        {#if replyingTo?.id === post.id}
-          <ReplyComposer
-            replyToId={post.id}
-            replyToAuthor={post.author}
-            onsubmitted={() => {
-              replyingTo = null;
-              loadFeed();
-            }}
-            oncancel={() => {
-              replyingTo = null;
-            }}
-          />
-        {/if}
-        {#if post.reply_to}
-          <a href="/post/{post.reply_to}" class="reply-context">
-            in reply to a post
-          </a>
-        {/if}
-      </article>
+      <PostCard
+        {post}
+        {nodeId}
+        showDelete={true}
+        {replyingTo}
+        getBlobUrl={blobs.getBlobUrl}
+        downloadFile={blobs.downloadFile}
+        onreply={(p) => {
+          replyingTo = replyingTo?.id === p.id ? null : p;
+        }}
+        ondelete={confirmDelete}
+        onreplied={() => {
+          replyingTo = null;
+          loadFeed();
+        }}
+        onlightbox={(src, alt) => {
+          lightboxSrc = src;
+          lightboxAlt = alt;
+        }}
+      />
     {:else}
       <p class="empty">No posts yet. Write something or follow someone!</p>
     {/each}
@@ -644,57 +497,65 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
+    padding: 0.6rem 0.85rem;
     background: #16213e;
-    border-radius: 8px;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
     margin-bottom: 1rem;
   }
 
   .node-id .label {
     color: #888;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    font-weight: 600;
   }
 
   .node-id code {
     color: #7dd3fc;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     flex: 1;
+    font-family: "SF Mono", "Fira Code", monospace;
   }
 
   .copy-btn {
     background: #2a2a4a;
     color: #c4b5fd;
     border: none;
-    border-radius: 4px;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.75rem;
+    border-radius: 6px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 500;
     cursor: pointer;
     min-width: 52px;
     text-align: center;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
 
   .copy-btn:hover {
     background: #3a3a5a;
+    color: #e0d4ff;
   }
 
-  /* Compose */
   .compose {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
   }
 
   .compose textarea {
     width: 100%;
     background: #16213e;
     border: 1px solid #2a2a4a;
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 0.75rem;
     color: #e0e0e0;
     font-family: inherit;
     font-size: 0.95rem;
     resize: vertical;
     box-sizing: border-box;
+    transition: border-color 0.2s;
   }
 
   .compose textarea:focus {
@@ -733,14 +594,20 @@
     background: #2a2a4a;
     color: #c4b5fd;
     border: none;
-    border-radius: 6px;
-    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    padding: 0.55rem 1rem;
     font-size: 0.85rem;
     cursor: pointer;
+    font-family: inherit;
+    font-weight: 500;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
 
   .attach-btn:hover:not(:disabled) {
     background: #3a3a5a;
+    color: #e0d4ff;
   }
 
   .attach-btn:disabled {
@@ -753,11 +620,13 @@
     background: #7c3aed;
     color: white;
     border: none;
-    border-radius: 6px;
-    padding: 0.6rem;
+    border-radius: 8px;
+    padding: 0.55rem;
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
   }
 
   .post-btn:hover:not(:disabled) {
@@ -824,7 +693,6 @@
     line-height: 1;
   }
 
-  /* Delete confirmation modal */
   .modal-overlay {
     position: fixed;
     inset: 0;
@@ -838,15 +706,16 @@
   .modal {
     background: #16213e;
     border: 1px solid #2a2a4a;
-    border-radius: 10px;
+    border-radius: 14px;
     padding: 1.5rem;
     max-width: 320px;
     width: 90%;
   }
 
   .modal p {
-    margin: 0 0 1rem;
+    margin: 0 0 1.25rem;
     text-align: center;
+    font-size: 0.95rem;
   }
 
   .modal-actions {
@@ -859,10 +728,12 @@
     background: #2a2a4a;
     color: #c4b5fd;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0.5rem;
     font-size: 0.9rem;
     cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
   }
 
   .modal-cancel:hover {
@@ -874,206 +745,17 @@
     background: #dc2626;
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0.5rem;
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
   }
 
   .modal-confirm:hover {
     background: #b91c1c;
-  }
-
-  /* Posts */
-  .post {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 0.5rem;
-    transition:
-      border-color 0.2s,
-      transform 0.15s;
-    animation: fadeIn 0.3s ease-out;
-  }
-
-  .post:hover {
-    border-color: #3a3a5a;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .post-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .post-header-right {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-left: auto;
-  }
-
-  .author-link {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    text-decoration: none;
-    color: inherit;
-  }
-
-  .author-link:hover .author {
-    text-decoration: underline;
-  }
-
-  .delete-btn {
-    background: none;
-    border: none;
-    color: #666;
-    font-size: 1rem;
-    cursor: pointer;
-    padding: 0 0.25rem;
-    line-height: 1;
-  }
-
-  .delete-btn:hover {
-    color: #ef4444;
-  }
-
-  .author {
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: #c4b5fd;
-  }
-
-  .author.self {
-    color: #a78bfa;
-  }
-
-  .time-link {
-    color: #666;
-    font-size: 0.8rem;
-    white-space: nowrap;
-    text-decoration: none;
-  }
-
-  .time-link:hover {
-    color: #888;
-    text-decoration: underline;
-  }
-
-  .reply-context {
-    display: block;
-    margin-top: 0.35rem;
-    font-size: 0.75rem;
-    color: #666;
-    text-decoration: none;
-  }
-
-  .reply-context:hover {
-    color: #a78bfa;
-    text-decoration: underline;
-  }
-
-  .post-content {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .post-content :global(a) {
-    color: #7dd3fc;
-    text-decoration: none;
-  }
-
-  .post-content :global(a:hover) {
-    text-decoration: underline;
-  }
-
-  .post-media {
-    margin-top: 0.75rem;
-  }
-
-  .post-media.grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
-  }
-
-  .media-img-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: zoom-in;
-    display: block;
-    width: 100%;
-  }
-
-  .media-img {
-    width: 100%;
-    border-radius: 6px;
-    max-height: 400px;
-    object-fit: contain;
-    background: #0f0f23;
-    display: block;
-  }
-
-  .media-video {
-    width: 100%;
-    border-radius: 6px;
-    max-height: 400px;
-  }
-
-  .media-placeholder {
-    background: #0f0f23;
-    border-radius: 6px;
-    padding: 2rem;
-    text-align: center;
-    color: #666;
-    font-size: 0.8rem;
-  }
-
-  .media-file {
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
-    border-radius: 6px;
-    padding: 0.75rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #c4b5fd;
-    font-size: 0.85rem;
-    cursor: pointer;
-    width: 100%;
-    font-family: inherit;
-    transition: border-color 0.2s;
-  }
-
-  .media-file:hover {
-    border-color: #a78bfa;
-  }
-
-  .file-size {
-    color: #666;
-    font-size: 0.75rem;
-  }
-
-  .download-label {
-    color: #7dd3fc;
-    font-size: 0.75rem;
   }
 
   .empty {
@@ -1103,14 +785,20 @@
     background: #2a2a4a;
     color: #c4b5fd;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0.5rem 1.5rem;
     font-size: 0.85rem;
+    font-family: inherit;
+    font-weight: 500;
     cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
 
   .refresh:hover:not(:disabled) {
     background: #3a3a5a;
+    color: #e0d4ff;
   }
 
   .refresh:disabled {
@@ -1118,7 +806,6 @@
     cursor: default;
   }
 
-  /* Toast notifications */
   .toast {
     position: fixed;
     bottom: 1.5rem;
@@ -1149,7 +836,6 @@
     }
   }
 
-  /* Scroll to top */
   .scroll-top {
     position: fixed;
     bottom: 1.5rem;
@@ -1176,5 +862,14 @@
   .scroll-top:hover {
     background: #6d28d9;
     transform: scale(1.1);
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 </style>

@@ -23,6 +23,8 @@
   });
   let liking = $state(false);
   let reposting = $state(false);
+  let bookmarked = $state(false);
+  let bookmarking = $state(false);
 
   async function loadCounts() {
     try {
@@ -32,9 +34,18 @@
     }
   }
 
+  async function loadBookmark() {
+    try {
+      bookmarked = await invoke("is_bookmarked", { postId });
+    } catch {
+      // best-effort
+    }
+  }
+
   $effect(() => {
     postId;
     loadCounts();
+    loadBookmark();
   });
 
   onMount(() => {
@@ -99,6 +110,17 @@
     }
     reposting = false;
   }
+
+  async function toggleBookmark() {
+    if (bookmarking) return;
+    bookmarking = true;
+    try {
+      bookmarked = await invoke("toggle_bookmark", { postId });
+    } catch (e) {
+      console.error("Failed to toggle bookmark:", e);
+    }
+    bookmarking = false;
+  }
 </script>
 
 <div class="post-actions">
@@ -126,15 +148,25 @@
     <span class="icon">{"\u21BB"}</span>
     {#if counts.reposts > 0}<span class="count">{counts.reposts}</span>{/if}
   </button>
+
+  <button
+    class="action-btn bookmark"
+    class:active={bookmarked}
+    onclick={toggleBookmark}
+    disabled={bookmarking}
+    title={bookmarked ? "Remove bookmark" : "Bookmark"}
+  >
+    <span class="icon">{bookmarked ? "\u2605" : "\u2606"}</span>
+  </button>
 </div>
 
 <style>
   .post-actions {
     display: flex;
-    gap: 1rem;
-    margin-top: 0.5rem;
+    gap: 0.25rem;
+    margin-top: 0.6rem;
     padding-top: 0.5rem;
-    border-top: 1px solid #2a2a4a;
+    border-top: 1px solid #2a2a4a20;
   }
 
   .action-btn {
@@ -143,11 +175,11 @@
     gap: 0.3rem;
     background: none;
     border: none;
-    color: #666;
+    color: #555;
     cursor: pointer;
     font-size: 0.85rem;
-    padding: 0.2rem 0.4rem;
-    border-radius: 4px;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
     font-family: inherit;
     transition:
       color 0.15s,
@@ -156,7 +188,7 @@
 
   .action-btn:hover:not(:disabled) {
     color: #c4b5fd;
-    background: #2a2a4a;
+    background: #c4b5fd12;
   }
 
   .action-btn:disabled {
@@ -170,7 +202,20 @@
 
   .action-btn.active:hover:not(:disabled) {
     color: #f87171;
-    background: #f8717120;
+    background: #f8717112;
+  }
+
+  .action-btn.bookmark {
+    margin-left: auto;
+  }
+
+  .action-btn.bookmark.active {
+    color: #fbbf24;
+  }
+
+  .action-btn.bookmark.active:hover:not(:disabled) {
+    color: #fbbf24;
+    background: #fbbf2412;
   }
 
   .icon {

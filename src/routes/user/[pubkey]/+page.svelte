@@ -3,27 +3,18 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
   import Avatar from "$lib/Avatar.svelte";
-  import PostActions from "$lib/PostActions.svelte";
-  import ReplyComposer from "$lib/ReplyComposer.svelte";
+  import PostCard from "$lib/PostCard.svelte";
+  import { createBlobCache } from "$lib/blobs";
   import type {
-    MediaAttachment,
     Post,
     Profile,
     FollowEntry,
     SyncResult,
     SyncStatus,
   } from "$lib/types";
-  import {
-    shortId,
-    copyToClipboard,
-    linkify,
-    isImage,
-    isVideo,
-    formatSize,
-  } from "$lib/utils";
+  import { shortId, copyToClipboard } from "$lib/utils";
 
   let pubkey: string = $derived(page.params.pubkey ?? "");
   let nodeId = $state("");
@@ -46,6 +37,7 @@
   let remoteTotal = $state<number | null>(null);
   let fetchingRemote = $state(false);
   let peerOffline = $state(false);
+  let pendingDeleteId = $state<string | null>(null);
 
   const FILTERS = [
     { value: "all", label: "All" },
@@ -56,12 +48,7 @@
     { value: "text", label: "Text" },
   ] as const;
 
-  const blobUrlCache = new Map<string, string>();
-
-  function revokeAllBlobUrls() {
-    for (const url of blobUrlCache.values()) URL.revokeObjectURL(url);
-    blobUrlCache.clear();
-  }
+  const blobs = createBlobCache();
 
   function showToast(message: string, type: "error" | "success" = "error") {
     toastMessage = message;
@@ -100,7 +87,7 @@
         try {
           syncStatus = await invoke("get_sync_status", { pubkey });
         } catch {
-          // sync status is informational, don't block on failure
+          // sync status is informational
         }
       }
 
@@ -152,7 +139,6 @@
         posts = [...posts, ...olderPosts];
         hasMore = olderPosts.length >= 20;
       } else if (!isSelf && !peerOffline && mediaFilter === "all") {
-        // Local posts exhausted -- try fetching from remote peer
         await fetchFromRemote();
       } else {
         hasMore = false;
@@ -173,10 +159,8 @@
       remoteTotal = result.remote_total;
       if (result.posts.length > 0) {
         posts = [...posts, ...result.posts];
-        // Refresh sync status
         syncStatus = await invoke("get_sync_status", { pubkey });
       }
-      // Full sync fetches everything, no more to load
       hasMore = false;
     } catch {
       peerOffline = true;
@@ -208,32 +192,29 @@
     setTimeout(() => (copyFeedback = false), 1500);
   }
 
-  async function getBlobUrl(attachment: MediaAttachment): Promise<string> {
-    const cached = blobUrlCache.get(attachment.hash);
-    if (cached) return cached;
-    const bytes: number[] = await invoke("fetch_blob_bytes", {
-      ticket: attachment.ticket,
-    });
-    const blob = new Blob([new Uint8Array(bytes)], {
-      type: attachment.mime_type,
-    });
-    const url = URL.createObjectURL(blob);
-    blobUrlCache.set(attachment.hash, url);
-    return url;
+  function confirmDelete(id: string) {
+    pendingDeleteId = id;
   }
 
-  async function downloadFile(att: MediaAttachment) {
+  async function executeDelete() {
+    if (!pendingDeleteId) return;
     try {
-      const url = await getBlobUrl(att);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = att.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await invoke("delete_post", { id: pendingDeleteId });
+      await reloadPosts();
     } catch (e) {
-      showToast(`Failed to download ${att.filename}`);
-      console.error("Download failed:", e);
+      showToast("Failed to delete post");
+      console.error("Failed to delete post:", e);
+    }
+    pendingDeleteId = null;
+  }
+
+  function cancelDelete() {
+    pendingDeleteId = null;
+  }
+
+  function handleGlobalKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && pendingDeleteId) {
+      cancelDelete();
     }
   }
 
@@ -280,10 +261,12 @@
         }
       }),
     );
+    window.addEventListener("keydown", handleGlobalKey);
     return () => {
       scrollObserver?.disconnect();
-      revokeAllBlobUrls();
+      blobs.revokeAll();
       unlisteners.forEach((p) => p.then((fn) => fn()));
+      window.removeEventListener("keydown", handleGlobalKey);
     };
   });
 </script>
@@ -364,82 +347,48 @@
     {/if}
   </h3>
 
+  {#if pendingDeleteId}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="modal-overlay" onclick={cancelDelete} role="presentation">
+      <!-- svelte-ignore a11y_interactive_supports_focus -->
+      <div
+        class="modal"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Confirm delete"
+      >
+        <p>Delete this post? This cannot be undone.</p>
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick={cancelDelete}>Cancel</button>
+          <button class="modal-confirm" onclick={executeDelete}>Delete</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <div class="feed">
     {#each posts as post (post.id)}
-      <article class="post">
-        <div class="post-header">
-          <a href="/post/{post.id}" class="time-link">
-            <Timeago timestamp={post.timestamp} />
-          </a>
-        </div>
-        {#if post.content}
-          <p class="post-content">{@html linkify(post.content)}</p>
-        {/if}
-        {#if post.media && post.media.length > 0}
-          <div class="post-media" class:grid={post.media.length > 1}>
-            {#each post.media as att (att.hash)}
-              {#if isImage(att.mime_type)}
-                {#await getBlobUrl(att)}
-                  <div class="media-placeholder">Loading...</div>
-                {:then url}
-                  <button
-                    class="media-img-btn"
-                    onclick={() => {
-                      lightboxSrc = url;
-                      lightboxAlt = att.filename;
-                    }}
-                  >
-                    <img src={url} alt={att.filename} class="media-img" />
-                  </button>
-                {:catch}
-                  <div class="media-placeholder">Failed to load</div>
-                {/await}
-              {:else if isVideo(att.mime_type)}
-                {#await getBlobUrl(att)}
-                  <div class="media-placeholder">Loading...</div>
-                {:then url}
-                  <video src={url} controls class="media-video">
-                    <track kind="captions" />
-                  </video>
-                {:catch}
-                  <div class="media-placeholder">Failed to load</div>
-                {/await}
-              {:else}
-                <button class="media-file" onclick={() => downloadFile(att)}>
-                  <span>{att.filename}</span>
-                  <span class="file-size">{formatSize(att.size)}</span>
-                  <span class="download-label">Download</span>
-                </button>
-              {/if}
-            {/each}
-          </div>
-        {/if}
-        <PostActions
-          postId={post.id}
-          postAuthor={post.author}
-          onreply={() => {
-            replyingTo = replyingTo?.id === post.id ? null : post;
-          }}
-        />
-        {#if replyingTo?.id === post.id}
-          <ReplyComposer
-            replyToId={post.id}
-            replyToAuthor={post.author}
-            onsubmitted={() => {
-              replyingTo = null;
-              reloadPosts();
-            }}
-            oncancel={() => {
-              replyingTo = null;
-            }}
-          />
-        {/if}
-        {#if post.reply_to}
-          <a href="/post/{post.reply_to}" class="reply-context">
-            in reply to a post
-          </a>
-        {/if}
-      </article>
+      <PostCard
+        {post}
+        {nodeId}
+        showAuthor={false}
+        showDelete={isSelf}
+        {replyingTo}
+        getBlobUrl={blobs.getBlobUrl}
+        downloadFile={blobs.downloadFile}
+        onreply={(p) => {
+          replyingTo = replyingTo?.id === p.id ? null : p;
+        }}
+        ondelete={confirmDelete}
+        onreplied={() => {
+          replyingTo = null;
+          reloadPosts();
+        }}
+        onlightbox={(src, alt) => {
+          lightboxSrc = src;
+          lightboxAlt = alt;
+        }}
+      />
     {:else}
       <p class="empty">No posts from this user yet.</p>
     {/each}
@@ -653,134 +602,6 @@
     margin: 0 0 0.75rem;
   }
 
-  .post {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .post:hover {
-    border-color: #3a3a5a;
-  }
-
-  .post-header {
-    margin-bottom: 0.5rem;
-  }
-
-  .time-link {
-    color: #666;
-    font-size: 0.8rem;
-    text-decoration: none;
-  }
-
-  .time-link:hover {
-    color: #888;
-    text-decoration: underline;
-  }
-
-  .reply-context {
-    display: block;
-    margin-top: 0.35rem;
-    font-size: 0.75rem;
-    color: #666;
-    text-decoration: none;
-  }
-
-  .reply-context:hover {
-    color: #a78bfa;
-    text-decoration: underline;
-  }
-
-  .post-content {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .post-content :global(a) {
-    color: #7dd3fc;
-    text-decoration: none;
-  }
-
-  .post-content :global(a:hover) {
-    text-decoration: underline;
-  }
-
-  .post-media {
-    margin-top: 0.75rem;
-  }
-
-  .post-media.grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
-  }
-
-  .media-img-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: zoom-in;
-    display: block;
-    width: 100%;
-  }
-
-  .media-img {
-    width: 100%;
-    border-radius: 6px;
-    max-height: 400px;
-    object-fit: contain;
-    background: #0f0f23;
-    display: block;
-  }
-
-  .media-video {
-    width: 100%;
-    border-radius: 6px;
-    max-height: 400px;
-  }
-
-  .media-placeholder {
-    background: #0f0f23;
-    border-radius: 6px;
-    padding: 2rem;
-    text-align: center;
-    color: #666;
-    font-size: 0.8rem;
-  }
-
-  .media-file {
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
-    border-radius: 6px;
-    padding: 0.75rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #c4b5fd;
-    font-size: 0.85rem;
-    cursor: pointer;
-    width: 100%;
-    font-family: inherit;
-    transition: border-color 0.2s;
-  }
-
-  .media-file:hover {
-    border-color: #a78bfa;
-  }
-
-  .file-size {
-    color: #666;
-    font-size: 0.75rem;
-  }
-
-  .download-label {
-    color: #7dd3fc;
-    font-size: 0.75rem;
-  }
-
   .empty {
     text-align: center;
     color: #666;
@@ -833,5 +654,65 @@
     padding: 0.75rem;
     border-top: 1px solid #2a2a4a;
     margin-top: 0.5rem;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    padding: 1.5rem;
+    max-width: 320px;
+    width: 90%;
+  }
+
+  .modal p {
+    margin: 0 0 1rem;
+    text-align: center;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .modal-cancel {
+    flex: 1;
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .modal-cancel:hover {
+    background: #3a3a5a;
+  }
+
+  .modal-confirm {
+    flex: 1;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .modal-confirm:hover {
+    background: #b91c1c;
   }
 </style>

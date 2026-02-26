@@ -6,10 +6,10 @@ A brain dump of every possible feature, improvement, and direction for Iroh Soci
 
 ## Social Features
 
-- **Likes, replies, reposts** -- see dedicated design doc
+- ~~**Likes, replies, reposts**~~ -- DONE: full implementation with real-time counts, signature verification
 - **Hashtags** -- parse #tags from post content, make clickable, local search by tag
 - **Mentions** -- @pubkey or @alias inline in posts, notify mentioned user
-- **Bookmarks** -- save posts locally for later, private (never broadcast)
+- ~~**Bookmarks**~~ -- DONE: local-only saved posts, private (never broadcast)
 - **Polls** -- structured poll data in posts, votes as interactions
 - **Quote posts** -- repost with commentary (embed original post + your text above)
 - **Post editing** -- edit within a time window, broadcast edit as gossip update
@@ -30,15 +30,15 @@ A brain dump of every possible feature, improvement, and direction for Iroh Soci
 
 ## Messaging and Communication
 
-- **Direct messages** -- see dedicated design doc
+- ~~**Direct messages**~~ -- DONE: E2E encrypted with Noise IK + Double Ratchet, offline queuing, delivery status
 - **Voice calls** -- see dedicated design doc
 - **Video calls** -- see dedicated design doc
 - **Group chats** -- multi-party encrypted messaging (shared ratchet or sender keys)
 - **Disappearing messages** -- auto-delete DMs after read + timer
 - **Voice messages** -- record and send audio clips as DM attachments
 - **Message reactions** -- react to individual DM messages
-- **Read receipts** -- show when a DM has been read (opt-in)
-- **Typing indicators** -- show when the other person is typing
+- ~~**Read receipts**~~ -- DONE: sent back to peer on conversation open, displayed in UI
+- ~~**Typing indicators**~~ -- DONE: debounced input events sent over encrypted channel
 
 ---
 
@@ -82,7 +82,7 @@ A brain dump of every possible feature, improvement, and direction for Iroh Soci
 - **Feed filters** -- filter by: posts only, posts+replies, media only, links only
 - **Muted words** -- hide posts containing specific words/phrases
 - **Custom feeds** -- create feeds from specific lists or hashtags
-- **Unified notifications feed** -- likes, replies, reposts, new followers, mentions in one view
+- ~~**Unified notifications feed**~~ -- DONE: /notifications route with likes, replies, reposts, new followers
 - **Read position sync** -- remember scroll position, mark "caught up" point
 - **Feed grouping** -- group consecutive posts from same author
 - **Repost deduplication** -- if multiple follows repost the same thing, show once with "X and Y reposted"
@@ -149,10 +149,10 @@ A brain dump of every possible feature, improvement, and direction for Iroh Soci
 - **Gesture navigation** -- swipe to go back, pull to refresh
 - **Keyboard shortcuts** -- power user keybinds (j/k for next/prev post, l to like, etc.)
 - **Right-click context menus** -- copy link, copy text, mute user, etc.
-- **Toast notifications** -- non-intrusive success/error feedback
+- ~~**Toast notifications**~~ -- DONE: non-intrusive success/error feedback
 - **Skeleton loading states** -- show placeholder shapes while content loads
 - **Empty states** -- friendly illustrations/messages when feeds are empty
-- **Onboarding flow** -- first-run wizard (set display name, find people to follow)
+- ~~**Onboarding flow**~~ -- DONE: first-run setup (set display name, bio, avatar)
 - **Tutorial tooltips** -- explain P2P concepts for new users
 - **Accessibility** -- screen reader support, ARIA labels, high contrast mode
 - **Animations** -- subtle transitions for post appearing, like heart animation
@@ -162,8 +162,9 @@ A brain dump of every possible feature, improvement, and direction for Iroh Soci
 - **Mobile responsive** -- adapt layout for narrow screens if used in mobile webview
 - **System tray** -- minimize to tray, show notification badges
 - **Desktop notifications** -- OS-level notifications for mentions, DMs, new followers
-- **Unread count badge** -- show unread count on app icon / nav tabs
-- **Confirmation dialogs** -- confirm before delete, unfollow, etc.
+- ~~**Unread count badge**~~ -- show unread count on app icon / nav tabs
+- ~~**Confirmation dialogs**~~ -- DONE: confirm before delete, unfollow, etc.
+- ~~**Unread count badge**~~ -- DONE: unread DM count badge on Messages nav tab
 
 ---
 

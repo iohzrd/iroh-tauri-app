@@ -65,22 +65,23 @@
 
 <style>
   .reply-composer {
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid #2a2a4a;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid #2a2a4a40;
   }
 
   textarea {
     width: 100%;
     background: #0f0f23;
     border: 1px solid #2a2a4a;
-    border-radius: 6px;
-    padding: 0.5rem;
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
     color: #e0e0e0;
     font-family: inherit;
     font-size: 0.85rem;
     resize: vertical;
     box-sizing: border-box;
+    transition: border-color 0.2s;
   }
 
   textarea:focus {
@@ -91,7 +92,7 @@
   .reply-actions {
     display: flex;
     gap: 0.5rem;
-    margin-top: 0.35rem;
+    margin-top: 0.4rem;
     justify-content: flex-end;
   }
 
@@ -99,11 +100,14 @@
     background: #2a2a4a;
     color: #888;
     border: none;
-    border-radius: 4px;
-    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    padding: 0.35rem 0.85rem;
     font-size: 0.8rem;
     cursor: pointer;
     font-family: inherit;
+    transition:
+      color 0.15s,
+      background 0.15s;
   }
 
   .cancel-btn:hover {
@@ -115,12 +119,13 @@
     background: #7c3aed;
     color: white;
     border: none;
-    border-radius: 4px;
-    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    padding: 0.35rem 0.85rem;
     font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     font-family: inherit;
+    transition: background 0.15s;
   }
 
   .reply-btn:hover:not(:disabled) {

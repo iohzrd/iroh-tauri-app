@@ -1,24 +1,13 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { goto } from "$app/navigation";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import Timeago from "$lib/Timeago.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
-  import Avatar from "$lib/Avatar.svelte";
-  import PostActions from "$lib/PostActions.svelte";
+  import PostCard from "$lib/PostCard.svelte";
   import ReplyComposer from "$lib/ReplyComposer.svelte";
-  import type { MediaAttachment, Post } from "$lib/types";
-  import {
-    shortId,
-    getDisplayName,
-    getCachedAvatarTicket,
-    linkify,
-    isImage,
-    isVideo,
-    formatSize,
-  } from "$lib/utils";
+  import { createBlobCache } from "$lib/blobs";
+  import type { Post } from "$lib/types";
 
   let postId: string = $derived(page.params.id ?? "");
   let nodeId = $state("");
@@ -32,12 +21,7 @@
   let sentinel = $state<HTMLDivElement>(null!);
   let replySection = $state<HTMLDivElement>(null!);
 
-  const blobUrlCache = new Map<string, string>();
-
-  function revokeAllBlobUrls() {
-    for (const url of blobUrlCache.values()) URL.revokeObjectURL(url);
-    blobUrlCache.clear();
-  }
+  const blobs = createBlobCache();
 
   async function init() {
     try {
@@ -90,34 +74,6 @@
     loadingMore = false;
   }
 
-  async function getBlobUrl(attachment: MediaAttachment): Promise<string> {
-    const cached = blobUrlCache.get(attachment.hash);
-    if (cached) return cached;
-    const bytes: number[] = await invoke("fetch_blob_bytes", {
-      ticket: attachment.ticket,
-    });
-    const blob = new Blob([new Uint8Array(bytes)], {
-      type: attachment.mime_type,
-    });
-    const url = URL.createObjectURL(blob);
-    blobUrlCache.set(attachment.hash, url);
-    return url;
-  }
-
-  async function downloadFile(att: MediaAttachment) {
-    try {
-      const url = await getBlobUrl(att);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = att.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (e) {
-      console.error("Download failed:", e);
-    }
-  }
-
   let scrollObserver: IntersectionObserver | null = null;
 
   $effect(() => {
@@ -145,102 +101,11 @@
     );
     return () => {
       scrollObserver?.disconnect();
-      revokeAllBlobUrls();
+      blobs.revokeAll();
       unlisteners.forEach((p) => p.then((fn) => fn()));
     };
   });
 </script>
-
-{#snippet renderMedia(media: MediaAttachment[])}
-  <div class="post-media" class:grid={media.length > 1}>
-    {#each media as att (att.hash)}
-      {#if isImage(att.mime_type)}
-        {#await getBlobUrl(att)}
-          <div class="media-placeholder">Loading...</div>
-        {:then url}
-          <button
-            class="media-img-btn"
-            onclick={() => {
-              lightboxSrc = url;
-              lightboxAlt = att.filename;
-            }}
-          >
-            <img src={url} alt={att.filename} class="media-img" />
-          </button>
-        {:catch}
-          <div class="media-placeholder">Failed to load</div>
-        {/await}
-      {:else if isVideo(att.mime_type)}
-        {#await getBlobUrl(att)}
-          <div class="media-placeholder">Loading...</div>
-        {:then url}
-          <video src={url} controls class="media-video">
-            <track kind="captions" />
-          </video>
-        {:catch}
-          <div class="media-placeholder">Failed to load</div>
-        {/await}
-      {:else}
-        <button class="media-file" onclick={() => downloadFile(att)}>
-          <span>{att.filename}</span>
-          <span class="file-size">{formatSize(att.size)}</span>
-          <span class="download-label">Download</span>
-        </button>
-      {/if}
-    {/each}
-  </div>
-{/snippet}
-
-{#snippet renderPost(p: Post, isParent: boolean)}
-  <article class="post" class:parent={isParent}>
-    <div class="post-header">
-      {#await getDisplayName(p.author, nodeId)}
-        {@const fallback = p.author === nodeId ? "You" : shortId(p.author)}
-        <a href="/user/{p.author}" class="author-link">
-          <Avatar
-            pubkey={p.author}
-            name={fallback}
-            isSelf={p.author === nodeId}
-            ticket={getCachedAvatarTicket(p.author)}
-          />
-          <span class="author" class:self={p.author === nodeId}>
-            {fallback}
-          </span>
-        </a>
-      {:then name}
-        <a href="/user/{p.author}" class="author-link">
-          <Avatar
-            pubkey={p.author}
-            {name}
-            isSelf={p.author === nodeId}
-            ticket={getCachedAvatarTicket(p.author)}
-          />
-          <span class="author" class:self={p.author === nodeId}>
-            {name}
-          </span>
-        </a>
-      {/await}
-      <span class="time"><Timeago timestamp={p.timestamp} /></span>
-    </div>
-    {#if p.content}
-      <p class="post-content">{@html linkify(p.content)}</p>
-    {/if}
-    {#if p.media && p.media.length > 0}
-      {@render renderMedia(p.media)}
-    {/if}
-    <PostActions
-      postId={p.id}
-      postAuthor={p.author}
-      onreply={() => {
-        if (isParent) {
-          replySection?.scrollIntoView({ behavior: "smooth" });
-        } else {
-          goto(`/post/${p.id}`);
-        }
-      }}
-    />
-  </article>
-{/snippet}
 
 {#if lightboxSrc}
   <Lightbox
@@ -261,7 +126,22 @@
   <a href="/" class="back-link">&larr; Back to feed</a>
 
   {#if post}
-    {@render renderPost(post, true)}
+    <div class="parent-post">
+      <PostCard
+        {post}
+        {nodeId}
+        showReplyContext={true}
+        getBlobUrl={blobs.getBlobUrl}
+        downloadFile={blobs.downloadFile}
+        onreply={() => {
+          replySection?.scrollIntoView({ behavior: "smooth" });
+        }}
+        onlightbox={(src, alt) => {
+          lightboxSrc = src;
+          lightboxAlt = alt;
+        }}
+      />
+    </div>
 
     <div class="reply-section" bind:this={replySection}>
       <h3 class="section-title">
@@ -286,7 +166,17 @@
 
   <div class="replies">
     {#each replies as reply (reply.id)}
-      {@render renderPost(reply, false)}
+      <PostCard
+        post={reply}
+        {nodeId}
+        showReplyContext={false}
+        getBlobUrl={blobs.getBlobUrl}
+        downloadFile={blobs.downloadFile}
+        onlightbox={(src, alt) => {
+          lightboxSrc = src;
+          lightboxAlt = alt;
+        }}
+      />
     {:else}
       {#if post}
         <p class="empty">No replies yet.</p>
@@ -333,145 +223,9 @@
     text-decoration: underline;
   }
 
-  .post {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .post:hover {
-    border-color: #3a3a5a;
-  }
-
-  .post.parent {
+  .parent-post :global(.post) {
     border-color: #3a3a5a;
     margin-bottom: 1rem;
-  }
-
-  .post-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .author-link {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    text-decoration: none;
-    color: inherit;
-  }
-
-  .author-link:hover .author {
-    text-decoration: underline;
-  }
-
-  .author {
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: #c4b5fd;
-  }
-
-  .author.self {
-    color: #a78bfa;
-  }
-
-  .time {
-    color: #666;
-    font-size: 0.8rem;
-    margin-left: auto;
-    white-space: nowrap;
-  }
-
-  .post-content {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .post-content :global(a) {
-    color: #7dd3fc;
-    text-decoration: none;
-  }
-
-  .post-content :global(a:hover) {
-    text-decoration: underline;
-  }
-
-  .post-media {
-    margin-top: 0.75rem;
-  }
-
-  .post-media.grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
-  }
-
-  .media-img-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: zoom-in;
-    display: block;
-    width: 100%;
-  }
-
-  .media-img {
-    width: 100%;
-    border-radius: 6px;
-    max-height: 400px;
-    object-fit: contain;
-    background: #0f0f23;
-    display: block;
-  }
-
-  .media-video {
-    width: 100%;
-    border-radius: 6px;
-    max-height: 400px;
-  }
-
-  .media-placeholder {
-    background: #0f0f23;
-    border-radius: 6px;
-    padding: 2rem;
-    text-align: center;
-    color: #666;
-    font-size: 0.8rem;
-  }
-
-  .media-file {
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
-    border-radius: 6px;
-    padding: 0.75rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #c4b5fd;
-    font-size: 0.85rem;
-    cursor: pointer;
-    width: 100%;
-    font-family: inherit;
-    transition: border-color 0.2s;
-  }
-
-  .media-file:hover {
-    border-color: #a78bfa;
-  }
-
-  .file-size {
-    color: #666;
-    font-size: 0.75rem;
-  }
-
-  .download-label {
-    color: #7dd3fc;
-    font-size: 0.75rem;
   }
 
   .reply-section {

@@ -1,7 +1,11 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import type { Profile } from "$lib/types";
+  import Lightbox from "$lib/Lightbox.svelte";
+  import PostCard from "$lib/PostCard.svelte";
+  import { createBlobCache } from "$lib/blobs";
+  import type { Post, Profile } from "$lib/types";
   import {
     avatarColor,
     getInitials,
@@ -21,6 +25,18 @@
   let status = $state("");
   let copyFeedback = $state(false);
   let fileInput = $state<HTMLInputElement>(null!);
+
+  // Posts
+  let posts = $state<Post[]>([]);
+  let hasMore = $state(true);
+  let loadingMore = $state(false);
+  let replyingTo = $state<Post | null>(null);
+  let lightboxSrc = $state("");
+  let lightboxAlt = $state("");
+  let sentinel = $state<HTMLDivElement>(null!);
+  let pendingDeleteId = $state<string | null>(null);
+
+  const blobs = createBlobCache();
 
   // Dirty-state tracking: saved values from last load/save
   let savedDisplayName = $state("");
@@ -49,6 +65,44 @@
     }
   }
 
+  async function loadPosts() {
+    try {
+      const allPosts: Post[] = await invoke("get_user_posts", {
+        pubkey: nodeId,
+        limit: 20,
+        before: null,
+        mediaFilter: null,
+      });
+      posts = allPosts;
+      hasMore = allPosts.length >= 20;
+    } catch (e) {
+      console.error("Failed to load posts:", e);
+    }
+  }
+
+  async function loadMore() {
+    if (loadingMore || !hasMore || posts.length === 0) return;
+    loadingMore = true;
+    try {
+      const oldest = posts[posts.length - 1];
+      const olderPosts: Post[] = await invoke("get_user_posts", {
+        pubkey: nodeId,
+        limit: 20,
+        before: oldest.timestamp,
+        mediaFilter: null,
+      });
+      if (olderPosts.length > 0) {
+        posts = [...posts, ...olderPosts];
+        hasMore = olderPosts.length >= 20;
+      } else {
+        hasMore = false;
+      }
+    } catch (e) {
+      console.error("Failed to load more:", e);
+    }
+    loadingMore = false;
+  }
+
   async function init() {
     try {
       nodeId = await invoke("get_node_id");
@@ -65,6 +119,7 @@
           await loadAvatarPreview(profile.avatar_ticket);
         }
       }
+      await loadPosts();
       loading = false;
     } catch {
       setTimeout(init, 500);
@@ -126,13 +181,76 @@
     saving = false;
   }
 
+  function confirmDelete(id: string) {
+    pendingDeleteId = id;
+  }
+
+  async function executeDelete() {
+    if (!pendingDeleteId) return;
+    try {
+      await invoke("delete_post", { id: pendingDeleteId });
+      await loadPosts();
+    } catch (e) {
+      console.error("Failed to delete post:", e);
+    }
+    pendingDeleteId = null;
+  }
+
+  function cancelDelete() {
+    pendingDeleteId = null;
+  }
+
+  function handleGlobalKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && pendingDeleteId) {
+      cancelDelete();
+    }
+  }
+
+  let scrollObserver: IntersectionObserver | null = null;
+
+  $effect(() => {
+    scrollObserver?.disconnect();
+    if (!sentinel) return;
+    scrollObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          loadMore();
+        }
+      },
+      { rootMargin: "0px 0px 200px 0px" },
+    );
+    scrollObserver.observe(sentinel);
+    return () => scrollObserver?.disconnect();
+  });
+
   onMount(() => {
     init();
+    const unlisteners: Promise<UnlistenFn>[] = [];
+    unlisteners.push(
+      listen("feed-updated", () => {
+        if (nodeId) loadPosts();
+      }),
+    );
+    window.addEventListener("keydown", handleGlobalKey);
     return () => {
+      scrollObserver?.disconnect();
       if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+      blobs.revokeAll();
+      unlisteners.forEach((p) => p.then((fn) => fn()));
+      window.removeEventListener("keydown", handleGlobalKey);
     };
   });
 </script>
+
+{#if lightboxSrc}
+  <Lightbox
+    src={lightboxSrc}
+    alt={lightboxAlt}
+    onclose={() => {
+      lightboxSrc = "";
+    }}
+  />
+{/if}
 
 {#if loading}
   <div class="loading">
@@ -209,6 +327,68 @@
       <p class="status">{status}</p>
     {/if}
   </div>
+
+  {#if pendingDeleteId}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="modal-overlay" onclick={cancelDelete} role="presentation">
+      <!-- svelte-ignore a11y_interactive_supports_focus -->
+      <div
+        class="modal"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Confirm delete"
+      >
+        <p>Delete this post? This cannot be undone.</p>
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick={cancelDelete}>Cancel</button>
+          <button class="modal-confirm" onclick={executeDelete}>Delete</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <h3 class="section-title">
+    Your Posts{posts.length > 0
+      ? ` (${posts.length}${hasMore ? "+" : ""})`
+      : ""}
+  </h3>
+
+  <div class="feed">
+    {#each posts as post (post.id)}
+      <PostCard
+        {post}
+        {nodeId}
+        showAuthor={false}
+        showDelete={true}
+        {replyingTo}
+        getBlobUrl={blobs.getBlobUrl}
+        downloadFile={blobs.downloadFile}
+        onreply={(p) => {
+          replyingTo = replyingTo?.id === p.id ? null : p;
+        }}
+        ondelete={confirmDelete}
+        onreplied={() => {
+          replyingTo = null;
+          loadPosts();
+        }}
+        onlightbox={(src, alt) => {
+          lightboxSrc = src;
+          lightboxAlt = alt;
+        }}
+      />
+    {:else}
+      <p class="empty">You haven't posted anything yet.</p>
+    {/each}
+  </div>
+
+  {#if hasMore && posts.length > 0}
+    <div bind:this={sentinel} class="sentinel">
+      {#if loadingMore}
+        <span class="btn-spinner"></span>
+        Loading...
+      {/if}
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -376,5 +556,108 @@
     color: #888;
     font-size: 0.85rem;
     margin-top: 0.75rem;
+  }
+
+  .section-title {
+    color: #888;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 1.5rem 0 0.75rem;
+  }
+
+  .empty {
+    text-align: center;
+    color: #666;
+    padding: 2rem;
+  }
+
+  .sentinel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    min-height: 1px;
+    padding: 0.5rem 0;
+    color: #c4b5fd;
+    font-size: 0.85rem;
+  }
+
+  .btn-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #c4b5fd40;
+    border-top-color: #c4b5fd;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    padding: 1.5rem;
+    max-width: 320px;
+    width: 90%;
+  }
+
+  .modal p {
+    margin: 0 0 1rem;
+    text-align: center;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .modal-cancel {
+    flex: 1;
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .modal-cancel:hover {
+    background: #3a3a5a;
+  }
+
+  .modal-confirm {
+    flex: 1;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .modal-confirm:hover {
+    background: #b91c1c;
   }
 </style>

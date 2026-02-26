@@ -54,6 +54,10 @@ impl Storage {
             "007_signatures",
             include_str!("../migrations/007_signatures.sql"),
         ),
+        (
+            "008_bookmarks",
+            include_str!("../migrations/008_bookmarks.sql"),
+        ),
     ];
 
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
@@ -1047,5 +1051,71 @@ impl Storage {
             params![peer_pubkey],
         )?;
         Ok(())
+    }
+
+    // -- Bookmarks --
+
+    /// Toggle bookmark on a post. Returns true if now bookmarked, false if removed.
+    pub fn toggle_bookmark(&self, post_id: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let exists: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM bookmarks WHERE post_id=?1",
+            params![post_id],
+            |row| row.get(0),
+        )?;
+        if exists {
+            db.execute("DELETE FROM bookmarks WHERE post_id=?1", params![post_id])?;
+            Ok(false)
+        } else {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
+            db.execute(
+                "INSERT INTO bookmarks (post_id, created_at) VALUES (?1, ?2)",
+                params![post_id, now],
+            )?;
+            Ok(true)
+        }
+    }
+
+    pub fn is_bookmarked(&self, post_id: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let exists: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM bookmarks WHERE post_id=?1",
+            params![post_id],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
+    }
+
+    pub fn get_bookmarks(&self, limit: usize, before: Option<u64>) -> anyhow::Result<Vec<Post>> {
+        let db = self.db.lock().unwrap();
+        let mut posts = Vec::new();
+        match before {
+            Some(b) => {
+                let mut stmt = db.prepare(
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.signature
+                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
+                     WHERE b.created_at < ?1 ORDER BY b.created_at DESC LIMIT ?2",
+                )?;
+                let mut rows = stmt.query(params![b as i64, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    posts.push(Self::row_to_post(row)?);
+                }
+            }
+            None => {
+                let mut stmt = db.prepare(
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.signature
+                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
+                     ORDER BY b.created_at DESC LIMIT ?1",
+                )?;
+                let mut rows = stmt.query(params![limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    posts.push(Self::row_to_post(row)?);
+                }
+            }
+        }
+        Ok(posts)
     }
 }
