@@ -4,6 +4,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import Lightbox from "$lib/Lightbox.svelte";
+  import QrModal from "$lib/QrModal.svelte";
   import Avatar from "$lib/Avatar.svelte";
   import PostCard from "$lib/PostCard.svelte";
   import ReplyComposer from "$lib/ReplyComposer.svelte";
@@ -45,6 +46,7 @@
   let isBlocked = $state(false);
   let togglingMute = $state(false);
   let togglingBlock = $state(false);
+  let showQr = $state(false);
 
   const FILTERS = [
     { value: "all", label: "All" },
@@ -261,8 +263,9 @@
   }
 
   function handleGlobalKey(e: KeyboardEvent) {
-    if (e.key === "Escape" && pendingDeleteId) {
-      cancelDelete();
+    if (e.key === "Escape") {
+      if (pendingDeleteId) cancelDelete();
+      else if (showQr) showQr = false;
     }
   }
 
@@ -311,6 +314,10 @@
   });
 </script>
 
+{#if showQr}
+  <QrModal nodeId={pubkey} onclose={() => (showQr = false)} />
+{/if}
+
 {#if lightboxSrc}
   <Lightbox
     src={lightboxSrc}
@@ -350,6 +357,7 @@
     <button class="copy-btn" onclick={copyNodeId}>
       {copyFeedback ? "Copied!" : "Copy ID"}
     </button>
+    <button class="copy-btn" onclick={() => (showQr = true)}>QR</button>
   </div>
 
   {#if !isSelf}

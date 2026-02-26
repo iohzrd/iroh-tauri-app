@@ -3,6 +3,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import Lightbox from "$lib/Lightbox.svelte";
+  import QrModal from "$lib/QrModal.svelte";
   import PostCard from "$lib/PostCard.svelte";
   import ReplyComposer from "$lib/ReplyComposer.svelte";
   import QuoteComposer from "$lib/QuoteComposer.svelte";
@@ -39,6 +40,7 @@
   let lightboxAlt = $state("");
   let sentinel = $state<HTMLDivElement>(null!);
   let pendingDeleteId = $state<string | null>(null);
+  let showQr = $state(false);
 
   const blobs = createBlobCache();
   setBlobContext(blobs);
@@ -206,8 +208,9 @@
   }
 
   function handleGlobalKey(e: KeyboardEvent) {
-    if (e.key === "Escape" && pendingDeleteId) {
-      cancelDelete();
+    if (e.key === "Escape") {
+      if (pendingDeleteId) cancelDelete();
+      else if (showQr) showQr = false;
     }
   }
 
@@ -238,6 +241,10 @@
   });
 </script>
 
+{#if showQr}
+  <QrModal {nodeId} onclose={() => (showQr = false)} />
+{/if}
+
 {#if lightboxSrc}
   <Lightbox
     src={lightboxSrc}
@@ -263,6 +270,7 @@
       <button class="copy-btn" onclick={copyNodeId}>
         {copyFeedback ? "Copied!" : "Copy"}
       </button>
+      <button class="copy-btn" onclick={() => (showQr = true)}>QR</button>
     </div>
   </div>
 

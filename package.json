@@ -1,6 +1,6 @@
 {
   "name": "iroh-tauri-app",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "description": "",
   "type": "module",
   "scripts": {
@@ -14,9 +14,13 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@svelte-put/qr": "^2.1.1",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-barcode-scanner": "^2.4.4",
+    "@tauri-apps/plugin-deep-link": "^2.4.7",
     "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-os": "^2.3.2",
     "timeago.js": "^4.0.2"
   },
   "devDependencies": {
@@ -26,7 +30,7 @@
     "@tauri-apps/cli": "^2",
     "prettier-plugin-svelte": "^3.5.0",
     "svelte": "^5.53.5",
-    "svelte-check": "^4.4.3",
+    "svelte-check": "^4.4.4",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
   }

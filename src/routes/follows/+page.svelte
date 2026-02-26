@@ -1,8 +1,10 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { platform } from "@tauri-apps/plugin-os";
   import { onMount } from "svelte";
   import Avatar from "$lib/Avatar.svelte";
+  import ScannerModal from "$lib/ScannerModal.svelte";
   import type { FollowEntry, FollowerEntry } from "$lib/types";
   import {
     shortId,
@@ -23,6 +25,8 @@
   let activeTab = $state<"following" | "followers">("following");
   let editingAlias = $state<string | null>(null);
   let aliasInput = $state("");
+  const isMobile = platform() === "android" || platform() === "ios";
+  let showScanner = $state(false);
 
   async function copyWithFeedback(text: string, label: string) {
     await copyToClipboard(text);
@@ -140,6 +144,7 @@
     if (e.key === "Escape") {
       if (pendingUnfollowPubkey) cancelUnfollow();
       else if (editingAlias) editingAlias = null;
+      else if (showScanner) showScanner = false;
     }
   }
 
@@ -208,8 +213,24 @@
         placeholder="Paste a Node ID to follow..."
         onkeydown={handleKey}
       />
+      {#if isMobile}
+        <button class="scan-btn" onclick={() => (showScanner = true)}
+          >Scan</button
+        >
+      {/if}
       <button onclick={followUser} disabled={!newPubkey.trim()}>Follow</button>
     </div>
+
+    {#if showScanner}
+      <ScannerModal
+        onscanned={(nodeId) => {
+          showScanner = false;
+          newPubkey = nodeId;
+          followUser();
+        }}
+        onclose={() => (showScanner = false)}
+      />
+    {/if}
 
     {#if status}
       <p class="status">{status}</p>
@@ -511,6 +532,15 @@
   .add-follow button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .scan-btn {
+    background: #2a2a4a !important;
+    color: #c4b5fd !important;
+  }
+
+  .scan-btn:hover {
+    background: #3a3a5a !important;
   }
 
   .follow-item {

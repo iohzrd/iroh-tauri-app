@@ -9,6 +9,8 @@
     requestPermission,
     sendNotification,
   } from "@tauri-apps/plugin-notification";
+  import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+  import { goto } from "$app/navigation";
   import type { NodeStatus, StoredMessage } from "$lib/types";
 
   const ZOOM_KEY = "app-zoom-level";
@@ -39,6 +41,21 @@
     } else if (e.key === "0") {
       e.preventDefault();
       applyZoom(1.0);
+    }
+  }
+
+  function handleDeepLink(url: string) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "iroh-social:") return;
+      if (parsed.hostname === "user") {
+        const nodeId = parsed.pathname.slice(1);
+        if (nodeId) {
+          goto(`/user/${nodeId}`);
+        }
+      }
+    } catch {
+      // malformed URL, ignore
     }
   }
 
@@ -112,6 +129,22 @@
     }
 
     setupNotifications();
+
+    // Deep link handling
+    unlisteners.push(
+      onOpenUrl((urls) => {
+        for (const url of urls) {
+          handleDeepLink(url);
+        }
+      }),
+    );
+    unlisteners.push(
+      listen<string[]>("deep-link-received", (event) => {
+        for (const url of event.payload) {
+          handleDeepLink(url);
+        }
+      }),
+    );
 
     return () => {
       window.removeEventListener("keydown", handleZoomKeys);

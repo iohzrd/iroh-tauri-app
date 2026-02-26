@@ -1079,10 +1079,41 @@ async fn sync_peer_posts(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Desktop-only plugins
+    #[cfg(not(mobile))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            for arg in &argv {
+                if arg.starts_with("iroh-social://") {
+                    let _ = app.emit("deep-link-received", vec![arg.clone()]);
+                    break;
+                }
+            }
+        }));
+    }
+
+    // Mobile-only plugins
+    #[cfg(mobile)]
+    {
+        builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    }
+
+    builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_os::init())
         .setup(|app| {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(e) = app.deep_link().register_all() {
+                    eprintln!("[setup] failed to register deep link schemes: {e}");
+                }
+            }
+
             let handle = app.handle().clone();
 
             let data_dir = handle
