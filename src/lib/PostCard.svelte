@@ -3,17 +3,12 @@
   import Avatar from "$lib/Avatar.svelte";
   import Timeago from "$lib/Timeago.svelte";
   import PostActions from "$lib/PostActions.svelte";
-  import { getBlobContext } from "$lib/blobs";
-  import type { Post, MediaAttachment } from "$lib/types";
-  import {
-    shortId,
-    getDisplayName,
-    getCachedAvatarTicket,
-    linkify,
-    isImage,
-    isVideo,
-    formatSize,
-  } from "$lib/utils";
+  import MediaGrid from "$lib/MediaGrid.svelte";
+  import ReplyContextBlock from "$lib/ReplyContextBlock.svelte";
+  import QuotedPostEmbed from "$lib/QuotedPostEmbed.svelte";
+  import { useDisplayName } from "$lib/name.svelte";
+  import type { Post } from "$lib/types";
+  import { getCachedAvatarTicket, linkify } from "$lib/utils";
 
   let {
     post,
@@ -37,130 +32,40 @@
     onlightbox?: (src: string, alt: string) => void;
   } = $props();
 
-  const { getBlobUrl, downloadFile } = getBlobContext();
-
-  // Resolve reply context
-  let replyContext = $state<{ author: string; preview: string } | null>(null);
-
-  $effect(() => {
-    if (showReplyContext && post.reply_to) {
-      loadReplyContext(post.reply_to);
-    }
-  });
-
-  async function loadReplyContext(parentId: string) {
-    try {
-      const parent: Post | null = await invoke("get_post", { id: parentId });
-      if (parent) {
-        const name = await getDisplayName(parent.author, nodeId);
-        const preview =
-          parent.content.length > 100
-            ? parent.content.slice(0, 100) + "..."
-            : parent.content;
-        replyContext = { author: name, preview };
-      }
-    } catch {
-      // parent not available locally
-    }
-  }
-
-  // Resolve quoted post
+  // Repost-only: a quote with no original content
   let quotedPost = $state<Post | null>(null);
-  let quotedAuthorName = $state("");
-
-  $effect(() => {
-    if (post.quote_of) {
-      loadQuotedPost(post.quote_of);
-    }
-  });
-
-  async function loadQuotedPost(quotedId: string) {
-    try {
-      const qp: Post | null = await invoke("get_post", { id: quotedId });
-      if (qp) {
-        quotedPost = qp;
-        quotedAuthorName = await getDisplayName(qp.author, nodeId);
-      }
-    } catch {
-      // quoted post not available locally
-    }
-  }
-
-  // A repost-only card shows the quoted post's content directly
   let isRepostOnly = $derived(
     post.quote_of && !post.content && post.media.length === 0,
   );
-
-  // The post to actually display (the quoted post for reposts, otherwise the post itself)
   let displayPost = $derived(isRepostOnly && quotedPost ? quotedPost : post);
 
-  // Resolve display author name (avoids duplicated {#await} blocks in template)
-  let authorName = $state("");
-  let repostAuthorName = $state("");
-
+  // Only fetch quoted post when repost-only (QuotedPostEmbed handles the normal case)
   $effect(() => {
-    const key = displayPost.author;
-    const fallback = key === nodeId ? "You" : shortId(key);
-    authorName = fallback;
-    getDisplayName(key, nodeId).then((name) => {
-      authorName = name;
-    });
-  });
-
-  $effect(() => {
-    if (isRepostOnly) {
-      const key = post.author;
-      repostAuthorName = shortId(key);
-      getDisplayName(key, nodeId).then((name) => {
-        repostAuthorName = name;
-      });
+    if (isRepostOnly && post.quote_of) {
+      invoke("get_post", { id: post.quote_of })
+        .then((qp) => {
+          quotedPost = qp as Post | null;
+        })
+        .catch(() => {});
     }
   });
-</script>
 
-{#snippet renderMedia(mediaList: MediaAttachment[])}
-  {#if mediaList.length > 0}
-    <div class="post-media" class:grid={mediaList.length > 1}>
-      {#each mediaList as att (att.hash)}
-        {#if isImage(att.mime_type)}
-          {#await getBlobUrl(att)}
-            <div class="media-placeholder">Loading...</div>
-          {:then url}
-            <button
-              class="media-img-btn"
-              onclick={() => onlightbox?.(url, att.filename)}
-            >
-              <img src={url} alt={att.filename} class="media-img" />
-            </button>
-          {:catch}
-            <div class="media-placeholder">Failed to load</div>
-          {/await}
-        {:else if isVideo(att.mime_type)}
-          {#await getBlobUrl(att)}
-            <div class="media-placeholder">Loading...</div>
-          {:then url}
-            <video src={url} controls class="media-video">
-              <track kind="captions" />
-            </video>
-          {:catch}
-            <div class="media-placeholder">Failed to load</div>
-          {/await}
-        {:else}
-          <button class="media-file" onclick={() => downloadFile(att)}>
-            <span>{att.filename}</span>
-            <span class="file-size">{formatSize(att.size)}</span>
-            <span class="download-label">Download</span>
-          </button>
-        {/if}
-      {/each}
-    </div>
-  {/if}
-{/snippet}
+  // Reactive name resolution (replaces 4 separate $effect/$state blocks)
+  const author = useDisplayName(
+    () => displayPost.author,
+    () => nodeId,
+  );
+  const repostAuthor = useDisplayName(
+    () => post.author,
+    () => nodeId,
+  );
+</script>
 
 <article class="post">
   {#if isRepostOnly && showAuthor}
     <div class="repost-label">
-      <a href="/user/{post.author}" class="repost-author">{repostAuthorName}</a>
+      <a href="/user/{post.author}" class="repost-author">{repostAuthor.name}</a
+      >
       <span>reposted</span>
     </div>
   {/if}
@@ -170,12 +75,12 @@
       <a href="/user/{displayPost.author}" class="author-link">
         <Avatar
           pubkey={displayPost.author}
-          name={authorName}
+          name={author.name}
           isSelf={displayPost.author === nodeId}
           ticket={getCachedAvatarTicket(displayPost.author)}
         />
         <span class="author" class:self={displayPost.author === nodeId}>
-          {authorName}
+          {author.name}
         </span>
       </a>
     {/if}
@@ -191,57 +96,22 @@
     </div>
   </div>
 
-  {#if post.reply_to && replyContext}
-    <a href="/post/{post.reply_to}" class="reply-context-block">
-      <span class="reply-icon">{"\u21A9"}</span>
-      <span class="reply-author">{replyContext.author}</span>
-      {#if replyContext.preview}
-        <span class="reply-preview">{replyContext.preview}</span>
-      {/if}
-    </a>
-  {:else if post.reply_to}
-    <a href="/post/{post.reply_to}" class="reply-context">
-      {"\u21A9"} in reply to a post
-    </a>
+  {#if showReplyContext && post.reply_to}
+    <ReplyContextBlock replyToId={post.reply_to} {nodeId} />
   {/if}
 
   {#if isRepostOnly && quotedPost}
     {#if quotedPost.content}
       <p class="post-content">{@html linkify(quotedPost.content)}</p>
     {/if}
-    {@render renderMedia(quotedPost.media)}
+    <MediaGrid media={quotedPost.media} {onlightbox} />
   {:else}
     {#if post.content}
       <p class="post-content">{@html linkify(post.content)}</p>
     {/if}
-    {@render renderMedia(post.media)}
-    {#if post.quote_of && quotedPost}
-      <a href="/post/{quotedPost.id}" class="quoted-post">
-        <div class="quoted-header">
-          <Avatar
-            pubkey={quotedPost.author}
-            name={quotedAuthorName || shortId(quotedPost.author)}
-            isSelf={quotedPost.author === nodeId}
-            ticket={getCachedAvatarTicket(quotedPost.author)}
-            size={20}
-          />
-          <span class="quoted-author"
-            >{quotedAuthorName || shortId(quotedPost.author)}</span
-          >
-          <Timeago timestamp={quotedPost.timestamp} />
-        </div>
-        {#if quotedPost.content}
-          <p class="quoted-content">
-            {quotedPost.content.length > 200
-              ? quotedPost.content.slice(0, 200) + "..."
-              : quotedPost.content}
-          </p>
-        {/if}
-      </a>
-    {:else if post.quote_of}
-      <a href="/post/{post.quote_of}" class="quoted-post unavailable">
-        Quoted post unavailable
-      </a>
+    <MediaGrid media={post.media} {onlightbox} />
+    {#if post.quote_of}
+      <QuotedPostEmbed quoteOfId={post.quote_of} {nodeId} />
     {/if}
   {/if}
 
@@ -370,57 +240,6 @@
     text-decoration: underline;
   }
 
-  .reply-context {
-    display: block;
-    margin-bottom: 0.35rem;
-    font-size: 0.75rem;
-    color: #666;
-    text-decoration: none;
-  }
-
-  .reply-context:hover {
-    color: #a78bfa;
-    text-decoration: underline;
-  }
-
-  .reply-context-block {
-    display: flex;
-    align-items: baseline;
-    gap: 0.3rem;
-    margin-bottom: 0.5rem;
-    padding: 0.35rem 0.6rem;
-    background: #0f0f23;
-    border-left: 2px solid #3a3a5a;
-    border-radius: 0 6px 6px 0;
-    font-size: 0.75rem;
-    color: #888;
-    text-decoration: none;
-    overflow: hidden;
-  }
-
-  .reply-context-block:hover {
-    border-left-color: #a78bfa;
-    color: #a78bfa;
-  }
-
-  .reply-icon {
-    flex-shrink: 0;
-    color: #666;
-  }
-
-  .reply-author {
-    color: #c4b5fd;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
-  .reply-preview {
-    color: #666;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .post-content {
     margin: 0;
     white-space: pre-wrap;
@@ -437,123 +256,5 @@
 
   .post-content :global(a:hover) {
     text-decoration: underline;
-  }
-
-  .quoted-post {
-    display: block;
-    margin-top: 0.6rem;
-    padding: 0.6rem 0.75rem;
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    text-decoration: none;
-    color: inherit;
-    transition: border-color 0.2s;
-  }
-
-  .quoted-post:hover {
-    border-color: #3a3a5a;
-  }
-
-  .quoted-post.unavailable {
-    color: #555;
-    font-size: 0.8rem;
-    font-style: italic;
-  }
-
-  .quoted-header {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-bottom: 0.3rem;
-    font-size: 0.75rem;
-    color: #888;
-  }
-
-  .quoted-author {
-    color: #c4b5fd;
-    font-weight: 600;
-  }
-
-  .quoted-content {
-    margin: 0;
-    font-size: 0.85rem;
-    line-height: 1.4;
-    color: #aaa;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .post-media {
-    margin-top: 0.75rem;
-  }
-
-  .post-media.grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
-  }
-
-  .media-img-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: zoom-in;
-    display: block;
-    width: 100%;
-  }
-
-  .media-img {
-    width: 100%;
-    border-radius: 8px;
-    max-height: 400px;
-    object-fit: contain;
-    background: #0f0f23;
-    display: block;
-  }
-
-  .media-video {
-    width: 100%;
-    border-radius: 8px;
-    max-height: 400px;
-  }
-
-  .media-placeholder {
-    background: #0f0f23;
-    border-radius: 8px;
-    padding: 2rem;
-    text-align: center;
-    color: #666;
-    font-size: 0.8rem;
-  }
-
-  .media-file {
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    padding: 0.75rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #c4b5fd;
-    font-size: 0.85rem;
-    cursor: pointer;
-    width: 100%;
-    font-family: inherit;
-    transition: border-color 0.2s;
-  }
-
-  .media-file:hover {
-    border-color: #a78bfa;
-  }
-
-  .file-size {
-    color: #666;
-    font-size: 0.75rem;
-  }
-
-  .download-label {
-    color: #7dd3fc;
-    font-size: 0.75rem;
   }
 </style>
