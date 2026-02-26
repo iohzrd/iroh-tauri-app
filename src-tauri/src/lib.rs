@@ -105,6 +105,8 @@ async fn create_post(
     media: Option<Vec<MediaAttachment>>,
     reply_to: Option<String>,
     reply_to_author: Option<String>,
+    quote_of: Option<String>,
+    quote_of_author: Option<String>,
 ) -> Result<Post, String> {
     let author = state.endpoint.id().to_string();
     let media_count = media.as_ref().map_or(0, |m| m.len());
@@ -116,6 +118,8 @@ async fn create_post(
         media: media.unwrap_or_default(),
         reply_to,
         reply_to_author,
+        quote_of,
+        quote_of_author,
         signature: String::new(),
     };
 
@@ -359,28 +363,35 @@ async fn repost(
     state: State<'_, Arc<AppState>>,
     target_post_id: String,
     target_author: String,
-) -> Result<Interaction, String> {
-    let my_id = state.endpoint.id().to_string();
-    let mut interaction = Interaction {
+) -> Result<Post, String> {
+    let author = state.endpoint.id().to_string();
+    let mut post = Post {
         id: generate_id(),
-        author: my_id,
-        kind: InteractionKind::Repost,
-        target_post_id,
-        target_author,
+        author,
+        content: String::new(),
         timestamp: now_millis(),
+        media: vec![],
+        reply_to: None,
+        reply_to_author: None,
+        quote_of: Some(target_post_id),
+        quote_of_author: Some(target_author),
         signature: String::new(),
     };
+
+    validate_post(&post)?;
+
     let sk = SecretKey::from_bytes(&state.secret_key_bytes);
-    sign_interaction(&mut interaction, &sk);
+    sign_post(&mut post, &sk);
+
     state
         .storage
-        .save_interaction(&interaction)
+        .insert_post(&post)
         .map_err(|e| e.to_string())?;
     let feed = state.feed.lock().await;
-    feed.broadcast_interaction(&interaction)
+    feed.broadcast_post(&post)
         .await
         .map_err(|e| e.to_string())?;
-    Ok(interaction)
+    Ok(post)
 }
 
 #[tauri::command]
@@ -388,11 +399,11 @@ async fn unrepost(state: State<'_, Arc<AppState>>, target_post_id: String) -> Re
     let my_id = state.endpoint.id().to_string();
     let id = state
         .storage
-        .delete_interaction_by_target(&my_id, "Repost", &target_post_id)
+        .delete_repost_by_target(&my_id, &target_post_id)
         .map_err(|e| e.to_string())?;
     if let Some(id) = id {
         let feed = state.feed.lock().await;
-        feed.broadcast_delete_interaction(&id, &my_id)
+        feed.broadcast_delete(&id, &my_id)
             .await
             .map_err(|e| e.to_string())?;
     }

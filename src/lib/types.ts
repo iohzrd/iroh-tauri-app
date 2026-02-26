@@ -14,6 +14,8 @@ export interface Post {
   media: MediaAttachment[];
   reply_to: string | null;
   reply_to_author: string | null;
+  quote_of: string | null;
+  quote_of_author: string | null;
   signature: string;
 }
 
@@ -57,7 +59,7 @@ export interface NodeStatus {
 export interface Interaction {
   id: string;
   author: string;
-  kind: "Like" | "Repost";
+  kind: "Like";
   target_post_id: string;
   target_author: string;
   timestamp: number;

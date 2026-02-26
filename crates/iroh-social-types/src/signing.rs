@@ -12,6 +12,8 @@ fn post_signing_bytes(post: &Post) -> Vec<u8> {
         "media": post.media,
         "reply_to": post.reply_to,
         "reply_to_author": post.reply_to_author,
+        "quote_of": post.quote_of,
+        "quote_of_author": post.quote_of_author,
     }))
     .expect("json serialization should not fail")
 }

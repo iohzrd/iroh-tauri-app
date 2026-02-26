@@ -8,10 +8,12 @@
     postId,
     postAuthor,
     onreply,
+    onquote,
   }: {
     postId: string;
     postAuthor: string;
     onreply?: () => void;
+    onquote?: () => void;
   } = $props();
 
   let counts = $state<PostCounts>({
@@ -59,6 +61,11 @@
     );
     unlisteners.push(
       listen<{ id: string; author: string }>("interaction-deleted", () => {
+        loadCounts();
+      }),
+    );
+    unlisteners.push(
+      listen("feed-updated", () => {
         loadCounts();
       }),
     );
@@ -144,9 +151,14 @@
     class:active={counts.reposted_by_me}
     onclick={toggleRepost}
     disabled={reposting}
+    title="Repost"
   >
     <span class="icon">{"\u21BB"}</span>
     {#if counts.reposts > 0}<span class="count">{counts.reposts}</span>{/if}
+  </button>
+
+  <button class="action-btn" onclick={onquote} title="Quote">
+    <span class="icon">{"\u275D"}</span>
   </button>
 
   <button

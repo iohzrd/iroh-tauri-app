@@ -29,6 +29,8 @@ pub struct Post {
     pub reply_to: Option<String>,
     #[serde(default)]
     pub reply_to_author: Option<String>,
+    pub quote_of: Option<String>,
+    pub quote_of_author: Option<String>,
     pub signature: String,
 }
 
@@ -46,7 +48,6 @@ pub struct Interaction {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum InteractionKind {
     Like,
-    Repost,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

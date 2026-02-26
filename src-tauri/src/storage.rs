@@ -62,6 +62,10 @@ impl Storage {
             "009_mute_block",
             include_str!("../migrations/009_mute_block.sql"),
         ),
+        (
+            "010_quote_posts",
+            include_str!("../migrations/010_quote_posts.sql"),
+        ),
     ];
 
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
@@ -136,8 +140,8 @@ impl Storage {
         let db = self.db.lock().unwrap();
         let media_json = serde_json::to_string(&post.media)?;
         db.execute(
-            "INSERT OR IGNORE INTO posts (id, author, content, timestamp, media_json, reply_to, reply_to_author, signature)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR IGNORE INTO posts (id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 post.id,
                 post.author,
@@ -146,6 +150,8 @@ impl Storage {
                 media_json,
                 post.reply_to,
                 post.reply_to_author,
+                post.quote_of,
+                post.quote_of_author,
                 post.signature,
             ],
         )?;
@@ -155,7 +161,7 @@ impl Storage {
     pub fn get_post_by_id(&self, id: &str) -> anyhow::Result<Option<Post>> {
         let db = self.db.lock().unwrap();
         let mut stmt =
-            db.prepare("SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts WHERE id=?1")?;
+            db.prepare("SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts WHERE id=?1")?;
         let mut rows = stmt.query(params![id])?;
         match rows.next()? {
             Some(row) => Ok(Some(Self::row_to_post(row)?)),
@@ -170,7 +176,7 @@ impl Storage {
         match before {
             Some(b) => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
                      WHERE timestamp < ?1 {hidden} ORDER BY timestamp DESC LIMIT ?2"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -181,7 +187,7 @@ impl Storage {
             }
             None => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
                      WHERE 1=1 {hidden} ORDER BY timestamp DESC LIMIT ?1"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -198,6 +204,26 @@ impl Storage {
         let db = self.db.lock().unwrap();
         let count = db.execute("DELETE FROM posts WHERE id=?1", params![id])?;
         Ok(count > 0)
+    }
+
+    /// Delete a repost (quote post) by author and quoted post ID, returning the post ID if found.
+    pub fn delete_repost_by_target(
+        &self,
+        author: &str,
+        quote_of: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let db = self.db.lock().unwrap();
+        let id: Option<String> = db
+            .query_row(
+                "SELECT id FROM posts WHERE author=?1 AND quote_of=?2",
+                params![author, quote_of],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(ref id) = id {
+            db.execute("DELETE FROM posts WHERE id=?1", params![id])?;
+        }
+        Ok(id)
     }
 
     pub fn get_posts_by_author(
@@ -223,7 +249,7 @@ impl Storage {
         match before {
             Some(b) => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
                      WHERE author=?1 AND timestamp < ?2{filter_clause} ORDER BY timestamp DESC LIMIT ?3"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -234,7 +260,7 @@ impl Storage {
             }
             None => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
                      WHERE author=?1{filter_clause} ORDER BY timestamp DESC LIMIT ?2"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -357,7 +383,7 @@ impl Storage {
     ) -> anyhow::Result<Vec<Post>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare(
-            "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature
+            "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature
              FROM posts WHERE author=?1 AND timestamp > ?2
              ORDER BY timestamp ASC LIMIT ?3 OFFSET ?4",
         )?;
@@ -386,7 +412,7 @@ impl Storage {
         if known_ids.is_empty() {
             // No known IDs = return all
             let mut stmt = db.prepare(
-                "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature
+                "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature
                  FROM posts WHERE author=?1
                  ORDER BY timestamp ASC LIMIT ?2 OFFSET ?3",
             )?;
@@ -409,7 +435,7 @@ impl Storage {
         drop(insert);
 
         let mut stmt = db.prepare(
-            "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.signature
+            "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature
              FROM posts p
              WHERE p.author=?1 AND p.id NOT IN (SELECT id FROM _sync_known_ids)
              ORDER BY p.timestamp ASC LIMIT ?2 OFFSET ?3",
@@ -456,7 +482,9 @@ impl Storage {
             media,
             reply_to: row.get(5)?,
             reply_to_author: row.get(6)?,
-            signature: row.get(7)?,
+            quote_of: row.get(7)?,
+            quote_of_author: row.get(8)?,
+            signature: row.get(9)?,
         })
     }
 
@@ -466,7 +494,6 @@ impl Storage {
         let db = self.db.lock().unwrap();
         let kind_str = match interaction.kind {
             InteractionKind::Like => "Like",
-            InteractionKind::Repost => "Repost",
         };
         db.execute(
             "INSERT OR IGNORE INTO interactions (id, author, kind, target_post_id, target_author, timestamp, signature)
@@ -529,7 +556,7 @@ impl Storage {
             |row| row.get(0),
         )?;
         let reposts: i64 = db.query_row(
-            "SELECT COUNT(*) FROM interactions WHERE target_post_id=?1 AND kind='Repost'",
+            "SELECT COUNT(*) FROM posts WHERE quote_of=?1",
             params![target_post_id],
             |row| row.get(0),
         )?;
@@ -544,7 +571,7 @@ impl Storage {
             |row| row.get(0),
         )?;
         let reposted_by_me: bool = db.query_row(
-            "SELECT COUNT(*) > 0 FROM interactions WHERE author=?1 AND kind='Repost' AND target_post_id=?2",
+            "SELECT COUNT(*) > 0 FROM posts WHERE author=?1 AND quote_of=?2",
             params![my_pubkey, target_post_id],
             |row| row.get(0),
         )?;
@@ -596,7 +623,6 @@ impl Storage {
         let kind_str: String = row.get(2)?;
         let kind = match kind_str.to_lowercase().as_str() {
             "like" => InteractionKind::Like,
-            "repost" => InteractionKind::Repost,
             other => anyhow::bail!("unknown interaction kind: {other}"),
         };
         Ok(Interaction {
@@ -624,7 +650,7 @@ impl Storage {
         match before {
             Some(b) => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
                      WHERE reply_to=?1 AND timestamp < ?2 {hidden} ORDER BY timestamp ASC LIMIT ?3"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -635,7 +661,7 @@ impl Storage {
             }
             None => {
                 let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, signature FROM posts
+                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
                      WHERE reply_to=?1 {hidden} ORDER BY timestamp ASC LIMIT ?2"
                 );
                 let mut stmt = db.prepare(&sql)?;
@@ -1201,7 +1227,7 @@ impl Storage {
         match before {
             Some(b) => {
                 let mut stmt = db.prepare(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.signature
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature
                      FROM bookmarks b JOIN posts p ON b.post_id = p.id
                      WHERE b.created_at < ?1 ORDER BY b.created_at DESC LIMIT ?2",
                 )?;
@@ -1212,7 +1238,7 @@ impl Storage {
             }
             None => {
                 let mut stmt = db.prepare(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.signature
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature
                      FROM bookmarks b JOIN posts p ON b.post_id = p.id
                      ORDER BY b.created_at DESC LIMIT ?1",
                 )?;

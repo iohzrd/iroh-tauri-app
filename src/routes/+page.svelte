@@ -35,6 +35,7 @@
   let loadingMore = $state(false);
   let hasMore = $state(true);
   let replyingTo = $state<Post | null>(null);
+  let quotingPost = $state<Post | null>(null);
   let lightboxSrc = $state("");
   let lightboxAlt = $state("");
   let sentinel = $state<HTMLDivElement>(null!);
@@ -426,14 +427,24 @@
         {nodeId}
         showDelete={true}
         {replyingTo}
+        {quotingPost}
         getBlobUrl={blobs.getBlobUrl}
         downloadFile={blobs.downloadFile}
         onreply={(p) => {
           replyingTo = replyingTo?.id === p.id ? null : p;
+          quotingPost = null;
         }}
         ondelete={confirmDelete}
         onreplied={() => {
           replyingTo = null;
+          loadFeed();
+        }}
+        onquote={(p) => {
+          quotingPost = quotingPost?.id === p.id ? null : p;
+          replyingTo = null;
+        }}
+        onquoted={() => {
+          quotingPost = null;
           loadFeed();
         }}
         onlightbox={(src, alt) => {

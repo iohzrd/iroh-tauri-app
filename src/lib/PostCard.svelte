@@ -4,6 +4,7 @@
   import Timeago from "$lib/Timeago.svelte";
   import PostActions from "$lib/PostActions.svelte";
   import ReplyComposer from "$lib/ReplyComposer.svelte";
+  import QuoteComposer from "$lib/QuoteComposer.svelte";
   import type { Post, MediaAttachment } from "$lib/types";
   import {
     shortId,
@@ -22,9 +23,12 @@
     showDelete = false,
     showReplyContext = true,
     replyingTo = null,
+    quotingPost = null,
     onreply,
     ondelete,
     onreplied,
+    onquote,
+    onquoted,
     onlightbox,
     getBlobUrl,
     downloadFile,
@@ -35,19 +39,30 @@
     showDelete?: boolean;
     showReplyContext?: boolean;
     replyingTo?: Post | null;
+    quotingPost?: Post | null;
     onreply?: (post: Post) => void;
     ondelete?: (id: string) => void;
     onreplied?: () => void;
+    onquote?: (post: Post) => void;
+    onquoted?: () => void;
     onlightbox?: (src: string, alt: string) => void;
     getBlobUrl: (attachment: MediaAttachment) => Promise<string>;
     downloadFile: (attachment: MediaAttachment) => void;
   } = $props();
 
   let replyContext = $state<{ author: string; preview: string } | null>(null);
+  let quotedPost = $state<Post | null>(null);
+  let quotedAuthorName = $state<string>("");
 
   $effect(() => {
     if (showReplyContext && post.reply_to) {
       loadReplyContext(post.reply_to);
+    }
+  });
+
+  $effect(() => {
+    if (post.quote_of) {
+      loadQuotedPost(post.quote_of);
     }
   });
 
@@ -66,42 +81,105 @@
       // parent not available locally
     }
   }
+
+  async function loadQuotedPost(quotedId: string) {
+    try {
+      const qp: Post | null = await invoke("get_post", { id: quotedId });
+      if (qp) {
+        quotedPost = qp;
+        quotedAuthorName = await getDisplayName(qp.author, nodeId);
+      }
+    } catch {
+      // quoted post not available locally
+    }
+  }
+
+  let isRepostOnly = $derived(
+    post.quote_of && !post.content && post.media.length === 0,
+  );
 </script>
 
 <article class="post">
+  {#if isRepostOnly && showAuthor}
+    <div class="repost-label">
+      {#await getDisplayName(post.author, nodeId)}
+        <span>{shortId(post.author)} reposted</span>
+      {:then name}
+        <a href="/user/{post.author}" class="repost-author">{name}</a>
+        <span>reposted</span>
+      {/await}
+    </div>
+  {/if}
   <div class="post-header">
     {#if showAuthor}
-      {#await getDisplayName(post.author, nodeId)}
-        {@const fallback =
-          post.author === nodeId ? "You" : shortId(post.author)}
-        <a href="/user/{post.author}" class="author-link">
-          <Avatar
-            pubkey={post.author}
-            name={fallback}
-            isSelf={post.author === nodeId}
-            ticket={getCachedAvatarTicket(post.author)}
-          />
-          <span class="author" class:self={post.author === nodeId}>
-            {fallback}
-          </span>
-        </a>
-      {:then name}
-        <a href="/user/{post.author}" class="author-link">
-          <Avatar
-            pubkey={post.author}
-            {name}
-            isSelf={post.author === nodeId}
-            ticket={getCachedAvatarTicket(post.author)}
-          />
-          <span class="author" class:self={post.author === nodeId}>
-            {name}
-          </span>
-        </a>
-      {/await}
+      {#if isRepostOnly && quotedPost}
+        {#await getDisplayName(quotedPost.author, nodeId)}
+          {@const fallback =
+            quotedPost.author === nodeId ? "You" : shortId(quotedPost.author)}
+          <a href="/user/{quotedPost.author}" class="author-link">
+            <Avatar
+              pubkey={quotedPost.author}
+              name={fallback}
+              isSelf={quotedPost.author === nodeId}
+              ticket={getCachedAvatarTicket(quotedPost.author)}
+            />
+            <span class="author" class:self={quotedPost.author === nodeId}>
+              {fallback}
+            </span>
+          </a>
+        {:then name}
+          <a href="/user/{quotedPost.author}" class="author-link">
+            <Avatar
+              pubkey={quotedPost.author}
+              {name}
+              isSelf={quotedPost.author === nodeId}
+              ticket={getCachedAvatarTicket(quotedPost.author)}
+            />
+            <span class="author" class:self={quotedPost.author === nodeId}>
+              {name}
+            </span>
+          </a>
+        {/await}
+      {:else}
+        {#await getDisplayName(post.author, nodeId)}
+          {@const fallback =
+            post.author === nodeId ? "You" : shortId(post.author)}
+          <a href="/user/{post.author}" class="author-link">
+            <Avatar
+              pubkey={post.author}
+              name={fallback}
+              isSelf={post.author === nodeId}
+              ticket={getCachedAvatarTicket(post.author)}
+            />
+            <span class="author" class:self={post.author === nodeId}>
+              {fallback}
+            </span>
+          </a>
+        {:then name}
+          <a href="/user/{post.author}" class="author-link">
+            <Avatar
+              pubkey={post.author}
+              {name}
+              isSelf={post.author === nodeId}
+              ticket={getCachedAvatarTicket(post.author)}
+            />
+            <span class="author" class:self={post.author === nodeId}>
+              {name}
+            </span>
+          </a>
+        {/await}
+      {/if}
     {/if}
     <div class="post-header-right">
-      <a href="/post/{post.id}" class="time-link">
-        <Timeago timestamp={post.timestamp} />
+      <a
+        href="/post/{isRepostOnly && quotedPost ? quotedPost.id : post.id}"
+        class="time-link"
+      >
+        <Timeago
+          timestamp={isRepostOnly && quotedPost
+            ? quotedPost.timestamp
+            : post.timestamp}
+        />
       </a>
       {#if showDelete && post.author === nodeId && ondelete}
         <button class="delete-btn" onclick={() => ondelete(post.id)}>
@@ -123,49 +201,120 @@
       {"\u21A9"} in reply to a post
     </a>
   {/if}
-  {#if post.content}
-    <p class="post-content">{@html linkify(post.content)}</p>
-  {/if}
-  {#if post.media && post.media.length > 0}
-    <div class="post-media" class:grid={post.media.length > 1}>
-      {#each post.media as att (att.hash)}
-        {#if isImage(att.mime_type)}
-          {#await getBlobUrl(att)}
-            <div class="media-placeholder">Loading...</div>
-          {:then url}
-            <button
-              class="media-img-btn"
-              onclick={() => onlightbox?.(url, att.filename)}
-            >
-              <img src={url} alt={att.filename} class="media-img" />
+  {#if isRepostOnly && quotedPost}
+    {#if quotedPost.content}
+      <p class="post-content">{@html linkify(quotedPost.content)}</p>
+    {/if}
+    {#if quotedPost.media && quotedPost.media.length > 0}
+      <div class="post-media" class:grid={quotedPost.media.length > 1}>
+        {#each quotedPost.media as att (att.hash)}
+          {#if isImage(att.mime_type)}
+            {#await getBlobUrl(att)}
+              <div class="media-placeholder">Loading...</div>
+            {:then url}
+              <button
+                class="media-img-btn"
+                onclick={() => onlightbox?.(url, att.filename)}
+              >
+                <img src={url} alt={att.filename} class="media-img" />
+              </button>
+            {:catch}
+              <div class="media-placeholder">Failed to load</div>
+            {/await}
+          {:else if isVideo(att.mime_type)}
+            {#await getBlobUrl(att)}
+              <div class="media-placeholder">Loading...</div>
+            {:then url}
+              <video src={url} controls class="media-video">
+                <track kind="captions" />
+              </video>
+            {:catch}
+              <div class="media-placeholder">Failed to load</div>
+            {/await}
+          {:else}
+            <button class="media-file" onclick={() => downloadFile(att)}>
+              <span>{att.filename}</span>
+              <span class="file-size">{formatSize(att.size)}</span>
+              <span class="download-label">Download</span>
             </button>
-          {:catch}
-            <div class="media-placeholder">Failed to load</div>
-          {/await}
-        {:else if isVideo(att.mime_type)}
-          {#await getBlobUrl(att)}
-            <div class="media-placeholder">Loading...</div>
-          {:then url}
-            <video src={url} controls class="media-video">
-              <track kind="captions" />
-            </video>
-          {:catch}
-            <div class="media-placeholder">Failed to load</div>
-          {/await}
-        {:else}
-          <button class="media-file" onclick={() => downloadFile(att)}>
-            <span>{att.filename}</span>
-            <span class="file-size">{formatSize(att.size)}</span>
-            <span class="download-label">Download</span>
-          </button>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+  {:else}
+    {#if post.content}
+      <p class="post-content">{@html linkify(post.content)}</p>
+    {/if}
+    {#if post.media && post.media.length > 0}
+      <div class="post-media" class:grid={post.media.length > 1}>
+        {#each post.media as att (att.hash)}
+          {#if isImage(att.mime_type)}
+            {#await getBlobUrl(att)}
+              <div class="media-placeholder">Loading...</div>
+            {:then url}
+              <button
+                class="media-img-btn"
+                onclick={() => onlightbox?.(url, att.filename)}
+              >
+                <img src={url} alt={att.filename} class="media-img" />
+              </button>
+            {:catch}
+              <div class="media-placeholder">Failed to load</div>
+            {/await}
+          {:else if isVideo(att.mime_type)}
+            {#await getBlobUrl(att)}
+              <div class="media-placeholder">Loading...</div>
+            {:then url}
+              <video src={url} controls class="media-video">
+                <track kind="captions" />
+              </video>
+            {:catch}
+              <div class="media-placeholder">Failed to load</div>
+            {/await}
+          {:else}
+            <button class="media-file" onclick={() => downloadFile(att)}>
+              <span>{att.filename}</span>
+              <span class="file-size">{formatSize(att.size)}</span>
+              <span class="download-label">Download</span>
+            </button>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+    {#if post.quote_of && quotedPost}
+      <a href="/post/{quotedPost.id}" class="quoted-post">
+        <div class="quoted-header">
+          <Avatar
+            pubkey={quotedPost.author}
+            name={quotedAuthorName || shortId(quotedPost.author)}
+            isSelf={quotedPost.author === nodeId}
+            ticket={getCachedAvatarTicket(quotedPost.author)}
+            size={20}
+          />
+          <span class="quoted-author"
+            >{quotedAuthorName || shortId(quotedPost.author)}</span
+          >
+          <Timeago timestamp={quotedPost.timestamp} />
+        </div>
+        {#if quotedPost.content}
+          <p class="quoted-content">
+            {quotedPost.content.length > 200
+              ? quotedPost.content.slice(0, 200) + "..."
+              : quotedPost.content}
+          </p>
         {/if}
-      {/each}
-    </div>
+      </a>
+    {:else if post.quote_of}
+      <a href="/post/{post.quote_of}" class="quoted-post unavailable">
+        Quoted post unavailable
+      </a>
+    {/if}
   {/if}
   <PostActions
     postId={post.id}
     postAuthor={post.author}
     onreply={() => onreply?.(post)}
+    onquote={() => onquote?.(post)}
   />
   {#if replyingTo?.id === post.id}
     <ReplyComposer
@@ -173,6 +322,14 @@
       replyToAuthor={post.author}
       onsubmitted={() => onreplied?.()}
       oncancel={() => onreply?.(post)}
+    />
+  {/if}
+  {#if quotingPost?.id === post.id}
+    <QuoteComposer
+      quotedPost={post}
+      {nodeId}
+      onsubmitted={() => onquoted?.()}
+      oncancel={() => onquote?.(post)}
     />
   {/if}
 </article>
@@ -201,6 +358,25 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  .repost-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.75rem;
+    color: #666;
+  }
+
+  .repost-author {
+    color: #c4b5fd;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .repost-author:hover {
+    text-decoration: underline;
   }
 
   .post-header {
@@ -342,6 +518,51 @@
 
   .post-content :global(a:hover) {
     text-decoration: underline;
+  }
+
+  .quoted-post {
+    display: block;
+    margin-top: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    background: #0f0f23;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.2s;
+  }
+
+  .quoted-post:hover {
+    border-color: #3a3a5a;
+  }
+
+  .quoted-post.unavailable {
+    color: #555;
+    font-size: 0.8rem;
+    font-style: italic;
+  }
+
+  .quoted-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.3rem;
+    font-size: 0.75rem;
+    color: #888;
+  }
+
+  .quoted-author {
+    color: #c4b5fd;
+    font-weight: 600;
+  }
+
+  .quoted-content {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: #aaa;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .post-media {
