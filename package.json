@@ -1,6 +1,6 @@
 {
   "name": "iroh-tauri-app",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "",
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
   "license": "MIT",
   "dependencies": {
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "timeago.js": "^4.0.2"
   },

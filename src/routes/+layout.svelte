@@ -4,7 +4,12 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { onMount } from "svelte";
-  import type { NodeStatus } from "$lib/types";
+  import {
+    isPermissionGranted,
+    requestPermission,
+    sendNotification,
+  } from "@tauri-apps/plugin-notification";
+  import type { NodeStatus, StoredMessage } from "$lib/types";
 
   const ZOOM_KEY = "app-zoom-level";
   const ZOOM_STEP = 0.2;
@@ -68,11 +73,46 @@
     const statusInterval = setInterval(pollStatus, 10000);
     const unreadInterval = setInterval(pollUnread, 10000);
     const unlisteners: Promise<UnlistenFn>[] = [];
-    unlisteners.push(
-      listen("dm-received", () => {
-        pollUnread();
-      }),
-    );
+
+    async function setupNotifications() {
+      let permitted = await isPermissionGranted();
+      if (!permitted) {
+        const result = await requestPermission();
+        permitted = result === "granted";
+      }
+      unlisteners.push(
+        listen<{ from: string; message: StoredMessage }>(
+          "dm-received",
+          async (event) => {
+            pollUnread();
+            const senderPubkey = event.payload.from;
+            const isViewingConversation =
+              page.url.pathname === `/messages/${senderPubkey}`;
+            if (!isViewingConversation && permitted) {
+              let title = senderPubkey.slice(0, 8);
+              try {
+                const profile = await invoke<{ display_name: string } | null>(
+                  "get_remote_profile",
+                  { pubkey: senderPubkey },
+                );
+                if (profile?.display_name) {
+                  title = profile.display_name;
+                }
+              } catch {
+                // keep short pubkey as title
+              }
+              sendNotification({
+                title,
+                body: event.payload.message.content || "Sent a message",
+              });
+            }
+          },
+        ),
+      );
+    }
+
+    setupNotifications();
+
     return () => {
       window.removeEventListener("keydown", handleZoomKeys);
       clearInterval(statusInterval);
