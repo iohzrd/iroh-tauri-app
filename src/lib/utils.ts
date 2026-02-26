@@ -147,14 +147,14 @@ export function formatSize(bytes: number): string {
  */
 export function setupInfiniteScroll(
   sentinel: HTMLElement | null,
-  hasMore: boolean,
-  loadingMore: boolean,
+  getHasMore: () => boolean,
+  getLoadingMore: () => boolean,
   loadMore: () => void,
 ): (() => void) | undefined {
   if (!sentinel) return;
   const observer = new IntersectionObserver(
     (entries) => {
-      if (entries[0].isIntersecting && hasMore && !loadingMore) {
+      if (entries[0].isIntersecting && getHasMore() && !getLoadingMore()) {
         loadMore();
       }
     },

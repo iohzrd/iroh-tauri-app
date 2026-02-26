@@ -6,7 +6,7 @@
   import Lightbox from "$lib/Lightbox.svelte";
   import PostCard from "$lib/PostCard.svelte";
   import ReplyComposer from "$lib/ReplyComposer.svelte";
-  import { createBlobCache } from "$lib/blobs";
+  import { createBlobCache, setBlobContext } from "$lib/blobs";
   import type { Post } from "$lib/types";
   import { setupInfiniteScroll } from "$lib/utils";
 
@@ -23,6 +23,7 @@
   let replySection = $state<HTMLDivElement>(null!);
 
   const blobs = createBlobCache();
+  setBlobContext(blobs);
 
   async function init() {
     try {
@@ -76,7 +77,12 @@
   }
 
   $effect(() => {
-    return setupInfiniteScroll(sentinel, hasMore, loadingMore, loadMoreReplies);
+    return setupInfiniteScroll(
+      sentinel,
+      () => hasMore,
+      () => loadingMore,
+      loadMoreReplies,
+    );
   });
 
   onMount(() => {
@@ -118,8 +124,6 @@
         {post}
         {nodeId}
         showReplyContext={true}
-        getBlobUrl={blobs.getBlobUrl}
-        downloadFile={blobs.downloadFile}
         onreply={() => {
           replySection?.scrollIntoView({ behavior: "smooth" });
         }}
@@ -157,8 +161,6 @@
         post={reply}
         {nodeId}
         showReplyContext={false}
-        getBlobUrl={blobs.getBlobUrl}
-        downloadFile={blobs.downloadFile}
         onlightbox={(src, alt) => {
           lightboxSrc = src;
           lightboxAlt = alt;

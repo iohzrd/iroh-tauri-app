@@ -4,7 +4,9 @@
   import { onMount } from "svelte";
   import Lightbox from "$lib/Lightbox.svelte";
   import PostCard from "$lib/PostCard.svelte";
-  import { createBlobCache } from "$lib/blobs";
+  import ReplyComposer from "$lib/ReplyComposer.svelte";
+  import QuoteComposer from "$lib/QuoteComposer.svelte";
+  import { createBlobCache, setBlobContext } from "$lib/blobs";
   import type { Post, Profile } from "$lib/types";
   import {
     avatarColor,
@@ -39,6 +41,7 @@
   let pendingDeleteId = $state<string | null>(null);
 
   const blobs = createBlobCache();
+  setBlobContext(blobs);
 
   // Dirty-state tracking: saved values from last load/save
   let savedDisplayName = $state("");
@@ -209,7 +212,12 @@
   }
 
   $effect(() => {
-    return setupInfiniteScroll(sentinel, hasMore, loadingMore, loadMore);
+    return setupInfiniteScroll(
+      sentinel,
+      () => hasMore,
+      () => loadingMore,
+      loadMore,
+    );
   });
 
   onMount(() => {
@@ -348,32 +356,42 @@
         {nodeId}
         showAuthor={false}
         showDelete={true}
-        {replyingTo}
-        {quotingPost}
-        getBlobUrl={blobs.getBlobUrl}
-        downloadFile={blobs.downloadFile}
         onreply={(p) => {
           replyingTo = replyingTo?.id === p.id ? null : p;
           quotingPost = null;
         }}
         ondelete={confirmDelete}
-        onreplied={() => {
-          replyingTo = null;
-          loadPosts();
-        }}
         onquote={(p) => {
           quotingPost = quotingPost?.id === p.id ? null : p;
           replyingTo = null;
-        }}
-        onquoted={() => {
-          quotingPost = null;
-          loadPosts();
         }}
         onlightbox={(src, alt) => {
           lightboxSrc = src;
           lightboxAlt = alt;
         }}
       />
+      {#if replyingTo?.id === post.id}
+        <ReplyComposer
+          replyToId={post.id}
+          replyToAuthor={post.author}
+          onsubmitted={() => {
+            replyingTo = null;
+            loadPosts();
+          }}
+          oncancel={() => (replyingTo = null)}
+        />
+      {/if}
+      {#if quotingPost?.id === post.id}
+        <QuoteComposer
+          quotedPost={post}
+          {nodeId}
+          onsubmitted={() => {
+            quotingPost = null;
+            loadPosts();
+          }}
+          oncancel={() => (quotingPost = null)}
+        />
+      {/if}
     {:else}
       <p class="empty">You haven't posted anything yet.</p>
     {/each}

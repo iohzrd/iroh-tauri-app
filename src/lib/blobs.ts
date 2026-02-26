@@ -1,5 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
+import { setContext, getContext } from "svelte";
 import type { MediaAttachment } from "$lib/types";
+
+export type BlobCache = ReturnType<typeof createBlobCache>;
+
+const BLOB_CTX = Symbol("blob-cache");
+
+export function setBlobContext(cache: BlobCache): void {
+  setContext(BLOB_CTX, cache);
+}
+
+export function getBlobContext(): BlobCache {
+  return getContext<BlobCache>(BLOB_CTX);
+}
 
 export function createBlobCache() {
   const cache = new Map<string, string>();

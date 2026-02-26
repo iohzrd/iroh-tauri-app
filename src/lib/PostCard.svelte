@@ -3,8 +3,7 @@
   import Avatar from "$lib/Avatar.svelte";
   import Timeago from "$lib/Timeago.svelte";
   import PostActions from "$lib/PostActions.svelte";
-  import ReplyComposer from "$lib/ReplyComposer.svelte";
-  import QuoteComposer from "$lib/QuoteComposer.svelte";
+  import { getBlobContext } from "$lib/blobs";
   import type { Post, MediaAttachment } from "$lib/types";
   import {
     shortId,
@@ -22,47 +21,30 @@
     showAuthor = true,
     showDelete = false,
     showReplyContext = true,
-    replyingTo = null,
-    quotingPost = null,
     onreply,
     ondelete,
-    onreplied,
     onquote,
-    onquoted,
     onlightbox,
-    getBlobUrl,
-    downloadFile,
   }: {
     post: Post;
     nodeId: string;
     showAuthor?: boolean;
     showDelete?: boolean;
     showReplyContext?: boolean;
-    replyingTo?: Post | null;
-    quotingPost?: Post | null;
     onreply?: (post: Post) => void;
     ondelete?: (id: string) => void;
-    onreplied?: () => void;
     onquote?: (post: Post) => void;
-    onquoted?: () => void;
     onlightbox?: (src: string, alt: string) => void;
-    getBlobUrl: (attachment: MediaAttachment) => Promise<string>;
-    downloadFile: (attachment: MediaAttachment) => void;
   } = $props();
 
+  const { getBlobUrl, downloadFile } = getBlobContext();
+
+  // Resolve reply context
   let replyContext = $state<{ author: string; preview: string } | null>(null);
-  let quotedPost = $state<Post | null>(null);
-  let quotedAuthorName = $state<string>("");
 
   $effect(() => {
     if (showReplyContext && post.reply_to) {
       loadReplyContext(post.reply_to);
-    }
-  });
-
-  $effect(() => {
-    if (post.quote_of) {
-      loadQuotedPost(post.quote_of);
     }
   });
 
@@ -82,6 +64,16 @@
     }
   }
 
+  // Resolve quoted post
+  let quotedPost = $state<Post | null>(null);
+  let quotedAuthorName = $state("");
+
+  $effect(() => {
+    if (post.quote_of) {
+      loadQuotedPost(post.quote_of);
+    }
+  });
+
   async function loadQuotedPost(quotedId: string) {
     try {
       const qp: Post | null = await invoke("get_post", { id: quotedId });
@@ -94,39 +86,37 @@
     }
   }
 
+  // A repost-only card shows the quoted post's content directly
   let isRepostOnly = $derived(
     post.quote_of && !post.content && post.media.length === 0,
   );
-</script>
 
-{#snippet authorLink(authorKey: string)}
-  {#await getDisplayName(authorKey, nodeId)}
-    {@const fallback = authorKey === nodeId ? "You" : shortId(authorKey)}
-    <a href="/user/{authorKey}" class="author-link">
-      <Avatar
-        pubkey={authorKey}
-        name={fallback}
-        isSelf={authorKey === nodeId}
-        ticket={getCachedAvatarTicket(authorKey)}
-      />
-      <span class="author" class:self={authorKey === nodeId}>
-        {fallback}
-      </span>
-    </a>
-  {:then name}
-    <a href="/user/{authorKey}" class="author-link">
-      <Avatar
-        pubkey={authorKey}
-        {name}
-        isSelf={authorKey === nodeId}
-        ticket={getCachedAvatarTicket(authorKey)}
-      />
-      <span class="author" class:self={authorKey === nodeId}>
-        {name}
-      </span>
-    </a>
-  {/await}
-{/snippet}
+  // The post to actually display (the quoted post for reposts, otherwise the post itself)
+  let displayPost = $derived(isRepostOnly && quotedPost ? quotedPost : post);
+
+  // Resolve display author name (avoids duplicated {#await} blocks in template)
+  let authorName = $state("");
+  let repostAuthorName = $state("");
+
+  $effect(() => {
+    const key = displayPost.author;
+    const fallback = key === nodeId ? "You" : shortId(key);
+    authorName = fallback;
+    getDisplayName(key, nodeId).then((name) => {
+      authorName = name;
+    });
+  });
+
+  $effect(() => {
+    if (isRepostOnly) {
+      const key = post.author;
+      repostAuthorName = shortId(key);
+      getDisplayName(key, nodeId).then((name) => {
+        repostAuthorName = name;
+      });
+    }
+  });
+</script>
 
 {#snippet renderMedia(mediaList: MediaAttachment[])}
   {#if mediaList.length > 0}
@@ -170,30 +160,28 @@
 <article class="post">
   {#if isRepostOnly && showAuthor}
     <div class="repost-label">
-      {#await getDisplayName(post.author, nodeId)}
-        <span>{shortId(post.author)} reposted</span>
-      {:then name}
-        <a href="/user/{post.author}" class="repost-author">{name}</a>
-        <span>reposted</span>
-      {/await}
+      <a href="/user/{post.author}" class="repost-author">{repostAuthorName}</a>
+      <span>reposted</span>
     </div>
   {/if}
+
   <div class="post-header">
     {#if showAuthor}
-      {@render authorLink(
-        isRepostOnly && quotedPost ? quotedPost.author : post.author,
-      )}
+      <a href="/user/{displayPost.author}" class="author-link">
+        <Avatar
+          pubkey={displayPost.author}
+          name={authorName}
+          isSelf={displayPost.author === nodeId}
+          ticket={getCachedAvatarTicket(displayPost.author)}
+        />
+        <span class="author" class:self={displayPost.author === nodeId}>
+          {authorName}
+        </span>
+      </a>
     {/if}
     <div class="post-header-right">
-      <a
-        href="/post/{isRepostOnly && quotedPost ? quotedPost.id : post.id}"
-        class="time-link"
-      >
-        <Timeago
-          timestamp={isRepostOnly && quotedPost
-            ? quotedPost.timestamp
-            : post.timestamp}
-        />
+      <a href="/post/{displayPost.id}" class="time-link">
+        <Timeago timestamp={displayPost.timestamp} />
       </a>
       {#if showDelete && post.author === nodeId && ondelete}
         <button class="delete-btn" onclick={() => ondelete(post.id)}>
@@ -202,6 +190,7 @@
       {/if}
     </div>
   </div>
+
   {#if post.reply_to && replyContext}
     <a href="/post/{post.reply_to}" class="reply-context-block">
       <span class="reply-icon">{"\u21A9"}</span>
@@ -215,6 +204,7 @@
       {"\u21A9"} in reply to a post
     </a>
   {/if}
+
   {#if isRepostOnly && quotedPost}
     {#if quotedPost.content}
       <p class="post-content">{@html linkify(quotedPost.content)}</p>
@@ -254,28 +244,13 @@
       </a>
     {/if}
   {/if}
+
   <PostActions
     postId={post.id}
     postAuthor={post.author}
     onreply={() => onreply?.(post)}
     onquote={() => onquote?.(post)}
   />
-  {#if replyingTo?.id === post.id}
-    <ReplyComposer
-      replyToId={post.id}
-      replyToAuthor={post.author}
-      onsubmitted={() => onreplied?.()}
-      oncancel={() => onreply?.(post)}
-    />
-  {/if}
-  {#if quotingPost?.id === post.id}
-    <QuoteComposer
-      quotedPost={post}
-      {nodeId}
-      onsubmitted={() => onquoted?.()}
-      oncancel={() => onquote?.(post)}
-    />
-  {/if}
 </article>
 
 <style>

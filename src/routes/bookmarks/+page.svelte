@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import PostCard from "$lib/PostCard.svelte";
   import Lightbox from "$lib/Lightbox.svelte";
-  import { createBlobCache } from "$lib/blobs";
+  import { createBlobCache, setBlobContext } from "$lib/blobs";
   import type { Post } from "$lib/types";
   import { setupInfiniteScroll } from "$lib/utils";
 
@@ -17,6 +17,7 @@
   let lightboxAlt = $state("");
 
   const blobs = createBlobCache();
+  setBlobContext(blobs);
 
   async function init() {
     try {
@@ -63,7 +64,12 @@
   }
 
   $effect(() => {
-    return setupInfiniteScroll(sentinel, hasMore, loadingMore, loadMore);
+    return setupInfiniteScroll(
+      sentinel,
+      () => hasMore,
+      () => loadingMore,
+      loadMore,
+    );
   });
 
   onMount(() => {
@@ -102,8 +108,6 @@
       <PostCard
         {post}
         {nodeId}
-        getBlobUrl={blobs.getBlobUrl}
-        downloadFile={blobs.downloadFile}
         onlightbox={(src, alt) => {
           lightboxSrc = src;
           lightboxAlt = alt;
