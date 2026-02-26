@@ -27,6 +27,10 @@ pub struct SyncRequest {
     pub before: Option<u64>,
     pub after: Option<u64>,
     pub limit: u32,
+    /// How many posts the requester already has for this author.
+    /// When present, the responder can detect gaps and fall back to a full sync.
+    #[serde(default)]
+    pub local_count: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -56,16 +56,28 @@ impl ProtocolHandler for SyncHandler {
             .get_author_post_range(&req.author)
             .map_err(map_err)?;
 
+        // Detect count mismatch: if the requester has fewer posts than we do
+        // but claims to be caught up (after == newest), they have a gap.
+        // Fall back to sending all posts so they can fill it.
+        let has_gap = req.local_count.is_some_and(|lc| lc < total_count);
+
         println!(
-            "[sync-server] local state for {}: total={}, oldest={:?}, newest={:?}, after={:?}",
+            "[sync-server] local state for {}: total={}, oldest={:?}, newest={:?}, after={:?}, remote_count={:?}, gap={}",
             short_id(&req.author),
             total_count,
             oldest_ts,
             newest_ts,
-            req.after
+            req.after,
+            req.local_count,
+            has_gap
         );
 
-        let posts = if let Some(after) = req.after {
+        let posts = if has_gap {
+            // Gap detected: send all posts so the requester can fill missing ones
+            self.storage
+                .get_posts_by_author(&req.author, req.limit as usize, None, None)
+                .map_err(map_err)?
+        } else if let Some(after) = req.after {
             self.storage
                 .get_posts_by_author_after(&req.author, after, req.limit as usize)
                 .map_err(map_err)?
@@ -135,6 +147,7 @@ pub async fn fetch_remote_posts(
     before: Option<u64>,
     after: Option<u64>,
     limit: u32,
+    local_count: Option<u64>,
 ) -> anyhow::Result<SyncResponse> {
     let addr = EndpointAddr::from(target);
     println!(
@@ -175,6 +188,7 @@ pub async fn fetch_remote_posts(
         before,
         after,
         limit,
+        local_count,
     };
     let req_bytes = serde_json::to_vec(&req)?;
 

@@ -221,6 +221,7 @@ async fn sync_posts(
     let (_local_oldest, local_newest) = storage
         .get_author_post_range(&pubkey)
         .unwrap_or((None, None));
+    let local_count = storage.count_posts_by_author(&pubkey).unwrap_or(0);
 
     let after = if before.is_none() { local_newest } else { None };
 
@@ -237,6 +238,7 @@ async fn sync_posts(
         before,
         after,
         limit.unwrap_or(50),
+        Some(local_count),
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -332,6 +334,7 @@ async fn fetch_older_posts(
             Some(before),
             None,
             limit.unwrap_or(50),
+            None,
         ),
     )
     .await
@@ -530,7 +533,7 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
-    match sync::fetch_remote_posts(&endpoint, target, &pubkey, None, None, 50).await {
+    match sync::fetch_remote_posts(&endpoint, target, &pubkey, None, None, 50, None).await {
         Ok(resp) => {
             for post in &resp.posts {
                 if let Err(reason) = validate_post(post) {
@@ -988,6 +991,7 @@ async fn sync_peer_posts(
     let (_, newest_local) = storage
         .get_author_post_range(pubkey)
         .unwrap_or((None, None));
+    let local_count = storage.count_posts_by_author(pubkey).unwrap_or(0);
 
     // If we have local posts, do forward catch-up; otherwise full initial sync
     let after = newest_local;
@@ -1002,7 +1006,7 @@ async fn sync_peer_posts(
         let start = std::time::Instant::now();
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(15),
-            sync::fetch_remote_posts(endpoint, target, pubkey, None, after, 50),
+            sync::fetch_remote_posts(endpoint, target, pubkey, None, after, 50, Some(local_count)),
         )
         .await;
         let elapsed = start.elapsed();
@@ -1279,6 +1283,7 @@ pub fn run() {
                                     before,
                                     None,
                                     50,
+                                    Some(local_count),
                                 ),
                             )
                             .await;
