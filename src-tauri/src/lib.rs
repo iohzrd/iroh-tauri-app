@@ -217,18 +217,13 @@ async fn sync_posts(
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
 
-    // Smart sync: fetch only posts newer than our local newest
-    let (_local_oldest, local_newest) = storage
-        .get_author_post_range(&pubkey)
-        .unwrap_or((None, None));
-    let local_count = storage.count_posts_by_author(&pubkey).unwrap_or(0);
-
-    let after = if before.is_none() { local_newest } else { None };
+    // Send known post IDs so the responder can diff and return only missing posts
+    let known_ids = storage.get_post_ids_by_author(&pubkey).unwrap_or_default();
 
     println!(
-        "[sync] requesting posts from {} (after={:?}, before={:?})...",
+        "[sync] requesting posts from {} (known_ids={}, before={:?})...",
         short_id(&pubkey),
-        after,
+        known_ids.len(),
         before
     );
     let resp = sync::fetch_remote_posts(
@@ -236,9 +231,9 @@ async fn sync_posts(
         target,
         &pubkey,
         before,
-        after,
+        None,
         limit.unwrap_or(50),
-        Some(local_count),
+        known_ids,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -334,7 +329,7 @@ async fn fetch_older_posts(
             Some(before),
             None,
             limit.unwrap_or(50),
-            None,
+            Vec::new(),
         ),
     )
     .await
@@ -533,7 +528,7 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
     let endpoint = state.endpoint.clone();
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
-    match sync::fetch_remote_posts(&endpoint, target, &pubkey, None, None, 50, None).await {
+    match sync::fetch_remote_posts(&endpoint, target, &pubkey, None, None, 50, Vec::new()).await {
         Ok(resp) => {
             for post in &resp.posts {
                 if let Err(reason) = validate_post(post) {
@@ -987,26 +982,20 @@ async fn sync_peer_posts(
         Err(_) => return,
     };
 
-    // Derive the forward cursor from actual stored posts
-    let (_, newest_local) = storage
-        .get_author_post_range(pubkey)
-        .unwrap_or((None, None));
-    let local_count = storage.count_posts_by_author(pubkey).unwrap_or(0);
-
-    // If we have local posts, do forward catch-up; otherwise full initial sync
-    let after = newest_local;
+    // Send known post IDs so the responder returns only missing posts
+    let known_ids = storage.get_post_ids_by_author(pubkey).unwrap_or_default();
 
     for attempt in 1..=3 {
         println!(
-            "[startup-sync] syncing from {} (attempt {}/3, after={:?})...",
+            "[startup-sync] syncing from {} (attempt {}/3, known_ids={})...",
             short_id(pubkey),
             attempt,
-            after
+            known_ids.len()
         );
         let start = std::time::Instant::now();
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(15),
-            sync::fetch_remote_posts(endpoint, target, pubkey, None, after, 50, Some(local_count)),
+            sync::fetch_remote_posts(endpoint, target, pubkey, None, None, 50, known_ids.clone()),
         )
         .await;
         let elapsed = start.elapsed();
@@ -1263,15 +1252,15 @@ pub fn run() {
                                 None => continue,
                             };
 
-                            let local_count = drip_storage
-                                .count_posts_by_author(&f.pubkey)
-                                .unwrap_or(0);
+                            let known_ids = drip_storage
+                                .get_post_ids_by_author(&f.pubkey)
+                                .unwrap_or_default();
 
                             println!(
-                                "[drip-sync] backward sync for {} (before={:?}, local_count={})",
+                                "[drip-sync] backward sync for {} (before={:?}, known_ids={})",
                                 short_id(&f.pubkey),
                                 before,
-                                local_count
+                                known_ids.len()
                             );
 
                             let result = tokio::time::timeout(
@@ -1283,7 +1272,7 @@ pub fn run() {
                                     before,
                                     None,
                                     50,
-                                    Some(local_count),
+                                    known_ids,
                                 ),
                             )
                             .await;
@@ -1292,9 +1281,9 @@ pub fn run() {
                                 Ok(Ok(resp)) => {
                                     if resp.posts.is_empty() {
                                         println!(
-                                            "[drip-sync] {} fully synced ({} local posts)",
+                                            "[drip-sync] {} fully synced (total_remote={})",
                                             short_id(&f.pubkey),
-                                            local_count
+                                            resp.total_count
                                         );
                                         continue;
                                     }

@@ -255,6 +255,17 @@ impl Storage {
         Ok(posts)
     }
 
+    pub fn get_post_ids_by_author(&self, author: &str) -> anyhow::Result<Vec<String>> {
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare("SELECT id FROM posts WHERE author=?1 ORDER BY timestamp ASC")?;
+        let mut rows = stmt.query(params![author])?;
+        let mut ids = Vec::new();
+        while let Some(row) = rows.next()? {
+            ids.push(row.get(0)?);
+        }
+        Ok(ids)
+    }
+
     pub fn count_posts_by_author(&self, author: &str) -> anyhow::Result<u64> {
         let db = self.db.lock().unwrap();
         let count: i64 = db.query_row(

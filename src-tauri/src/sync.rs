@@ -5,6 +5,7 @@ use iroh::{
     protocol::{AcceptError, ProtocolHandler},
 };
 use iroh_social_types::{SyncRequest, SyncResponse, short_id};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 pub use iroh_social_types::SYNC_ALPN;
@@ -31,7 +32,7 @@ impl ProtocolHandler for SyncHandler {
         let (mut send, mut recv) = conn.accept_bi().await?;
 
         let req_bytes = recv
-            .read_to_end(65536)
+            .read_to_end(262_144)
             .await
             .map_err(AcceptError::from_err)?;
 
@@ -56,27 +57,27 @@ impl ProtocolHandler for SyncHandler {
             .get_author_post_range(&req.author)
             .map_err(map_err)?;
 
-        // Detect count mismatch: if the requester has fewer posts than we do
-        // but claims to be caught up (after == newest), they have a gap.
-        // Fall back to sending all posts so they can fill it.
-        let has_gap = req.local_count.is_some_and(|lc| lc < total_count);
-
         println!(
-            "[sync-server] local state for {}: total={}, oldest={:?}, newest={:?}, after={:?}, remote_count={:?}, gap={}",
+            "[sync-server] local state for {}: total={}, oldest={:?}, newest={:?}, after={:?}, known_ids={}",
             short_id(&req.author),
             total_count,
             oldest_ts,
             newest_ts,
             req.after,
-            req.local_count,
-            has_gap
+            req.known_ids.len()
         );
 
-        let posts = if has_gap {
-            // Gap detected: send all posts so the requester can fill missing ones
-            self.storage
+        // If the requester sent known_ids, filter to only missing posts
+        let mut posts = if !req.known_ids.is_empty() {
+            let known: HashSet<&str> = req.known_ids.iter().map(|s| s.as_str()).collect();
+            let all_posts = self
+                .storage
                 .get_posts_by_author(&req.author, req.limit as usize, None, None)
-                .map_err(map_err)?
+                .map_err(map_err)?;
+            all_posts
+                .into_iter()
+                .filter(|p| !known.contains(p.id.as_str()))
+                .collect()
         } else if let Some(after) = req.after {
             self.storage
                 .get_posts_by_author_after(&req.author, after, req.limit as usize)
@@ -86,6 +87,7 @@ impl ProtocolHandler for SyncHandler {
                 .get_posts_by_author(&req.author, req.limit as usize, req.before, None)
                 .map_err(map_err)?
         };
+        posts.truncate(req.limit as usize);
 
         // Include interactions by this author
         let interactions = self
@@ -147,7 +149,7 @@ pub async fn fetch_remote_posts(
     before: Option<u64>,
     after: Option<u64>,
     limit: u32,
-    local_count: Option<u64>,
+    known_ids: Vec<String>,
 ) -> anyhow::Result<SyncResponse> {
     let addr = EndpointAddr::from(target);
     println!(
@@ -188,7 +190,7 @@ pub async fn fetch_remote_posts(
         before,
         after,
         limit,
-        local_count,
+        known_ids,
     };
     let req_bytes = serde_json::to_vec(&req)?;
 
