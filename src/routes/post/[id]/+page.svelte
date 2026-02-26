@@ -8,6 +8,7 @@
   import ReplyComposer from "$lib/ReplyComposer.svelte";
   import { createBlobCache } from "$lib/blobs";
   import type { Post } from "$lib/types";
+  import { setupInfiniteScroll } from "$lib/utils";
 
   let postId: string = $derived(page.params.id ?? "");
   let nodeId = $state("");
@@ -74,21 +75,8 @@
     loadingMore = false;
   }
 
-  let scrollObserver: IntersectionObserver | null = null;
-
   $effect(() => {
-    scrollObserver?.disconnect();
-    if (!sentinel) return;
-    scrollObserver = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          loadMoreReplies();
-        }
-      },
-      { rootMargin: "0px 0px 200px 0px" },
-    );
-    scrollObserver.observe(sentinel);
-    return () => scrollObserver?.disconnect();
+    return setupInfiniteScroll(sentinel, hasMore, loadingMore, loadMoreReplies);
   });
 
   onMount(() => {
@@ -100,7 +88,6 @@
       }),
     );
     return () => {
-      scrollObserver?.disconnect();
       blobs.revokeAll();
       unlisteners.forEach((p) => p.then((fn) => fn()));
     };
@@ -194,23 +181,6 @@
 {/if}
 
 <style>
-  .btn-spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid #c4b5fd40;
-    border-top-color: #c4b5fd;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    vertical-align: middle;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   .back-link {
     display: inline-block;
     color: #a78bfa;
@@ -256,17 +226,5 @@
   .not-found .hint {
     font-size: 0.8rem;
     color: #666;
-  }
-
-  .sentinel {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    width: 100%;
-    min-height: 1px;
-    padding: 0.5rem 0;
-    color: #c4b5fd;
-    font-size: 0.85rem;
   }
 </style>

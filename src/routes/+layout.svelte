@@ -13,7 +13,7 @@
 
   let { children } = $props();
   let status = $state<NodeStatus | null>(null);
-  let zoomLevel = 1.0;
+  let zoomLevel = $state(1.0);
   let unreadDmCount = $state(0);
 
   async function applyZoom(level: number) {
@@ -244,6 +244,127 @@
   @keyframes spin {
     to {
       transform: rotate(360deg);
+    }
+  }
+
+  :global(.btn-spinner) {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #c4b5fd40;
+    border-top-color: #c4b5fd;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+  }
+
+  :global(.sentinel) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    min-height: 1px;
+    padding: 0.5rem 0;
+    color: #c4b5fd;
+    font-size: 0.85rem;
+  }
+
+  :global(.modal-overlay) {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  :global(.modal) {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    padding: 1.5rem;
+    max-width: 320px;
+    width: 90%;
+  }
+
+  :global(.modal p) {
+    margin: 0 0 1rem;
+    text-align: center;
+  }
+
+  :global(.modal-actions) {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  :global(.modal-cancel) {
+    flex: 1;
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  :global(.modal-cancel:hover) {
+    background: #3a3a5a;
+  }
+
+  :global(.modal-confirm) {
+    flex: 1;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  :global(.modal-confirm:hover) {
+    background: #b91c1c;
+  }
+
+  :global(.modal-confirm.save) {
+    background: #7c3aed;
+  }
+
+  :global(.modal-confirm.save:hover) {
+    background: #6d28d9;
+  }
+
+  :global(.toast) {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2a2a4a;
+    color: #e0e0e0;
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    z-index: 200;
+    animation: toastIn 0.3s ease-out;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  :global(.toast.error) {
+    border-left: 3px solid #ef4444;
+  }
+
+  @keyframes toastIn {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
   }
 </style>

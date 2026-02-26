@@ -141,6 +141,29 @@ export function formatSize(bytes: number): string {
   return (bytes / 1048576).toFixed(1) + " MB";
 }
 
+/**
+ * Sets up an IntersectionObserver for infinite scroll on a sentinel element.
+ * Call from within a $effect; returns a cleanup function.
+ */
+export function setupInfiniteScroll(
+  sentinel: HTMLElement | null,
+  hasMore: boolean,
+  loadingMore: boolean,
+  loadMore: () => void,
+): (() => void) | undefined {
+  if (!sentinel) return;
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && hasMore && !loadingMore) {
+        loadMore();
+      }
+    },
+    { rootMargin: "0px 0px 200px 0px" },
+  );
+  observer.observe(sentinel);
+  return () => observer.disconnect();
+}
+
 export function detectImageMime(data: Uint8Array): string {
   if (data[0] === 0x89 && data[1] === 0x50) return "image/png";
   if (data[0] === 0xff && data[1] === 0xd8) return "image/jpeg";

@@ -99,6 +99,74 @@
   );
 </script>
 
+{#snippet authorLink(authorKey: string)}
+  {#await getDisplayName(authorKey, nodeId)}
+    {@const fallback = authorKey === nodeId ? "You" : shortId(authorKey)}
+    <a href="/user/{authorKey}" class="author-link">
+      <Avatar
+        pubkey={authorKey}
+        name={fallback}
+        isSelf={authorKey === nodeId}
+        ticket={getCachedAvatarTicket(authorKey)}
+      />
+      <span class="author" class:self={authorKey === nodeId}>
+        {fallback}
+      </span>
+    </a>
+  {:then name}
+    <a href="/user/{authorKey}" class="author-link">
+      <Avatar
+        pubkey={authorKey}
+        {name}
+        isSelf={authorKey === nodeId}
+        ticket={getCachedAvatarTicket(authorKey)}
+      />
+      <span class="author" class:self={authorKey === nodeId}>
+        {name}
+      </span>
+    </a>
+  {/await}
+{/snippet}
+
+{#snippet renderMedia(mediaList: MediaAttachment[])}
+  {#if mediaList.length > 0}
+    <div class="post-media" class:grid={mediaList.length > 1}>
+      {#each mediaList as att (att.hash)}
+        {#if isImage(att.mime_type)}
+          {#await getBlobUrl(att)}
+            <div class="media-placeholder">Loading...</div>
+          {:then url}
+            <button
+              class="media-img-btn"
+              onclick={() => onlightbox?.(url, att.filename)}
+            >
+              <img src={url} alt={att.filename} class="media-img" />
+            </button>
+          {:catch}
+            <div class="media-placeholder">Failed to load</div>
+          {/await}
+        {:else if isVideo(att.mime_type)}
+          {#await getBlobUrl(att)}
+            <div class="media-placeholder">Loading...</div>
+          {:then url}
+            <video src={url} controls class="media-video">
+              <track kind="captions" />
+            </video>
+          {:catch}
+            <div class="media-placeholder">Failed to load</div>
+          {/await}
+        {:else}
+          <button class="media-file" onclick={() => downloadFile(att)}>
+            <span>{att.filename}</span>
+            <span class="file-size">{formatSize(att.size)}</span>
+            <span class="download-label">Download</span>
+          </button>
+        {/if}
+      {/each}
+    </div>
+  {/if}
+{/snippet}
+
 <article class="post">
   {#if isRepostOnly && showAuthor}
     <div class="repost-label">
@@ -112,63 +180,9 @@
   {/if}
   <div class="post-header">
     {#if showAuthor}
-      {#if isRepostOnly && quotedPost}
-        {#await getDisplayName(quotedPost.author, nodeId)}
-          {@const fallback =
-            quotedPost.author === nodeId ? "You" : shortId(quotedPost.author)}
-          <a href="/user/{quotedPost.author}" class="author-link">
-            <Avatar
-              pubkey={quotedPost.author}
-              name={fallback}
-              isSelf={quotedPost.author === nodeId}
-              ticket={getCachedAvatarTicket(quotedPost.author)}
-            />
-            <span class="author" class:self={quotedPost.author === nodeId}>
-              {fallback}
-            </span>
-          </a>
-        {:then name}
-          <a href="/user/{quotedPost.author}" class="author-link">
-            <Avatar
-              pubkey={quotedPost.author}
-              {name}
-              isSelf={quotedPost.author === nodeId}
-              ticket={getCachedAvatarTicket(quotedPost.author)}
-            />
-            <span class="author" class:self={quotedPost.author === nodeId}>
-              {name}
-            </span>
-          </a>
-        {/await}
-      {:else}
-        {#await getDisplayName(post.author, nodeId)}
-          {@const fallback =
-            post.author === nodeId ? "You" : shortId(post.author)}
-          <a href="/user/{post.author}" class="author-link">
-            <Avatar
-              pubkey={post.author}
-              name={fallback}
-              isSelf={post.author === nodeId}
-              ticket={getCachedAvatarTicket(post.author)}
-            />
-            <span class="author" class:self={post.author === nodeId}>
-              {fallback}
-            </span>
-          </a>
-        {:then name}
-          <a href="/user/{post.author}" class="author-link">
-            <Avatar
-              pubkey={post.author}
-              {name}
-              isSelf={post.author === nodeId}
-              ticket={getCachedAvatarTicket(post.author)}
-            />
-            <span class="author" class:self={post.author === nodeId}>
-              {name}
-            </span>
-          </a>
-        {/await}
-      {/if}
+      {@render authorLink(
+        isRepostOnly && quotedPost ? quotedPost.author : post.author,
+      )}
     {/if}
     <div class="post-header-right">
       <a
@@ -205,82 +219,12 @@
     {#if quotedPost.content}
       <p class="post-content">{@html linkify(quotedPost.content)}</p>
     {/if}
-    {#if quotedPost.media && quotedPost.media.length > 0}
-      <div class="post-media" class:grid={quotedPost.media.length > 1}>
-        {#each quotedPost.media as att (att.hash)}
-          {#if isImage(att.mime_type)}
-            {#await getBlobUrl(att)}
-              <div class="media-placeholder">Loading...</div>
-            {:then url}
-              <button
-                class="media-img-btn"
-                onclick={() => onlightbox?.(url, att.filename)}
-              >
-                <img src={url} alt={att.filename} class="media-img" />
-              </button>
-            {:catch}
-              <div class="media-placeholder">Failed to load</div>
-            {/await}
-          {:else if isVideo(att.mime_type)}
-            {#await getBlobUrl(att)}
-              <div class="media-placeholder">Loading...</div>
-            {:then url}
-              <video src={url} controls class="media-video">
-                <track kind="captions" />
-              </video>
-            {:catch}
-              <div class="media-placeholder">Failed to load</div>
-            {/await}
-          {:else}
-            <button class="media-file" onclick={() => downloadFile(att)}>
-              <span>{att.filename}</span>
-              <span class="file-size">{formatSize(att.size)}</span>
-              <span class="download-label">Download</span>
-            </button>
-          {/if}
-        {/each}
-      </div>
-    {/if}
+    {@render renderMedia(quotedPost.media)}
   {:else}
     {#if post.content}
       <p class="post-content">{@html linkify(post.content)}</p>
     {/if}
-    {#if post.media && post.media.length > 0}
-      <div class="post-media" class:grid={post.media.length > 1}>
-        {#each post.media as att (att.hash)}
-          {#if isImage(att.mime_type)}
-            {#await getBlobUrl(att)}
-              <div class="media-placeholder">Loading...</div>
-            {:then url}
-              <button
-                class="media-img-btn"
-                onclick={() => onlightbox?.(url, att.filename)}
-              >
-                <img src={url} alt={att.filename} class="media-img" />
-              </button>
-            {:catch}
-              <div class="media-placeholder">Failed to load</div>
-            {/await}
-          {:else if isVideo(att.mime_type)}
-            {#await getBlobUrl(att)}
-              <div class="media-placeholder">Loading...</div>
-            {:then url}
-              <video src={url} controls class="media-video">
-                <track kind="captions" />
-              </video>
-            {:catch}
-              <div class="media-placeholder">Failed to load</div>
-            {/await}
-          {:else}
-            <button class="media-file" onclick={() => downloadFile(att)}>
-              <span>{att.filename}</span>
-              <span class="file-size">{formatSize(att.size)}</span>
-              <span class="download-label">Download</span>
-            </button>
-          {/if}
-        {/each}
-      </div>
-    {/if}
+    {@render renderMedia(post.media)}
     {#if post.quote_of && quotedPost}
       <a href="/post/{quotedPost.id}" class="quoted-post">
         <div class="quoted-header">

@@ -5,6 +5,7 @@
   import Lightbox from "$lib/Lightbox.svelte";
   import { createBlobCache } from "$lib/blobs";
   import type { Post } from "$lib/types";
+  import { setupInfiniteScroll } from "$lib/utils";
 
   let nodeId = $state("");
   let posts = $state<Post[]>([]);
@@ -61,27 +62,13 @@
     loadingMore = false;
   }
 
-  let scrollObserver: IntersectionObserver | null = null;
-
   $effect(() => {
-    scrollObserver?.disconnect();
-    if (!sentinel) return;
-    scrollObserver = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          loadMore();
-        }
-      },
-      { rootMargin: "0px 0px 200px 0px" },
-    );
-    scrollObserver.observe(sentinel);
-    return () => scrollObserver?.disconnect();
+    return setupInfiniteScroll(sentinel, hasMore, loadingMore, loadMore);
   });
 
   onMount(() => {
     init();
     return () => {
-      scrollObserver?.disconnect();
       blobs.revokeAll();
     };
   });
@@ -150,34 +137,5 @@
   .empty .hint {
     font-size: 0.8rem;
     color: #666;
-  }
-
-  .sentinel {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    width: 100%;
-    min-height: 1px;
-    padding: 0.5rem 0;
-    color: #c4b5fd;
-    font-size: 0.85rem;
-  }
-
-  .btn-spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid #c4b5fd40;
-    border-top-color: #c4b5fd;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    vertical-align: middle;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

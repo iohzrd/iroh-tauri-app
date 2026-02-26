@@ -14,6 +14,7 @@
     copyToClipboard,
     isImage,
     isVideo,
+    setupInfiniteScroll,
   } from "$lib/utils";
 
   const MAX_POST_LENGTH = 10_000;
@@ -263,21 +264,8 @@
     }
   }
 
-  let scrollObserver: IntersectionObserver | null = null;
-
   $effect(() => {
-    scrollObserver?.disconnect();
-    if (!sentinel) return;
-    scrollObserver = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          loadMore();
-        }
-      },
-      { rootMargin: "0px 0px 200px 0px" },
-    );
-    scrollObserver.observe(sentinel);
-    return () => scrollObserver?.disconnect();
+    return setupInfiniteScroll(sentinel, hasMore, loadingMore, loadMore);
   });
 
   onMount(() => {
@@ -487,23 +475,6 @@
 {/if}
 
 <style>
-  .btn-spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid #c4b5fd40;
-    border-top-color: #c4b5fd;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    vertical-align: middle;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   .node-id {
     display: flex;
     align-items: center;
@@ -704,87 +675,10 @@
     line-height: 1;
   }
 
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-  }
-
-  .modal {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 14px;
-    padding: 1.5rem;
-    max-width: 320px;
-    width: 90%;
-  }
-
-  .modal p {
-    margin: 0 0 1.25rem;
-    text-align: center;
-    font-size: 0.95rem;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .modal-cancel {
-    flex: 1;
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
-    border-radius: 8px;
-    padding: 0.5rem;
-    font-size: 0.9rem;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s;
-  }
-
-  .modal-cancel:hover {
-    background: #3a3a5a;
-  }
-
-  .modal-confirm {
-    flex: 1;
-    background: #dc2626;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s;
-  }
-
-  .modal-confirm:hover {
-    background: #b91c1c;
-  }
-
   .empty {
     text-align: center;
     color: #666;
     padding: 2rem;
-  }
-
-  .sentinel {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    width: 100%;
-    min-height: 1px;
-    padding: 0.5rem 0;
-    color: #c4b5fd;
-    font-size: 0.85rem;
   }
 
   .refresh {
@@ -815,36 +709,6 @@
   .refresh:disabled {
     opacity: 0.7;
     cursor: default;
-  }
-
-  .toast {
-    position: fixed;
-    bottom: 1.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #2a2a4a;
-    color: #e0e0e0;
-    padding: 0.6rem 1.25rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    z-index: 200;
-    animation: toastIn 0.3s ease-out;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  }
-
-  .toast.error {
-    border-left: 3px solid #ef4444;
-  }
-
-  @keyframes toastIn {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
   }
 
   .scroll-top {
