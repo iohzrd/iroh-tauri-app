@@ -366,7 +366,7 @@
   }
 
   main {
-    padding: 1rem;
+    padding: 1rem 1.5rem;
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
     flex: 1;
   }
