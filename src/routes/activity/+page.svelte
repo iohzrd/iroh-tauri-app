@@ -263,6 +263,11 @@
   .notif {
     border-bottom: 1px solid var(--border);
     padding: 0.75rem 0;
+    transition: background var(--transition-fast);
+  }
+
+  .notif:hover {
+    background: var(--bg-surface);
   }
 
   .notif.unread {
@@ -274,7 +279,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     color: var(--text-secondary);
     margin-bottom: 0.5rem;
     flex-wrap: wrap;
@@ -294,7 +299,7 @@
 
   .actor-name {
     color: var(--accent-light);
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .notif-label {
@@ -306,8 +311,8 @@
   }
 
   .notif-deleted {
-    color: var(--text-dim);
-    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-size: var(--text-base);
     font-style: italic;
     margin: 0.25rem 0 0;
   }
@@ -315,7 +320,7 @@
   .follower-link {
     display: inline-block;
     color: var(--accent-medium);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     text-decoration: none;
     margin-top: 0.25rem;
   }

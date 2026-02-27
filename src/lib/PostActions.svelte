@@ -136,12 +136,13 @@
     class:active={counts.liked_by_me}
     onclick={toggleLike}
     disabled={liking}
+    aria-label={counts.liked_by_me ? "Unlike" : "Like"}
   >
     <span class="icon">{counts.liked_by_me ? "\u2665" : "\u2661"}</span>
     {#if counts.likes > 0}<span class="count">{counts.likes}</span>{/if}
   </button>
 
-  <button class="action-btn" onclick={onreply}>
+  <button class="action-btn" onclick={onreply} aria-label="Reply">
     <span class="icon">{"\u21A9"}</span>
     {#if counts.replies > 0}<span class="count">{counts.replies}</span>{/if}
   </button>
@@ -152,12 +153,13 @@
     onclick={toggleRepost}
     disabled={reposting}
     title="Repost"
+    aria-label={counts.reposted_by_me ? "Undo repost" : "Repost"}
   >
     <span class="icon">{"\u21BB"}</span>
     {#if counts.reposts > 0}<span class="count">{counts.reposts}</span>{/if}
   </button>
 
-  <button class="action-btn" onclick={onquote} title="Quote">
+  <button class="action-btn" onclick={onquote} title="Quote" aria-label="Quote">
     <span class="icon">{"\u275D"}</span>
   </button>
 
@@ -167,6 +169,7 @@
     onclick={toggleBookmark}
     disabled={bookmarking}
     title={bookmarked ? "Remove bookmark" : "Bookmark"}
+    aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}
   >
     <span class="icon">{bookmarked ? "\u2605" : "\u2606"}</span>
   </button>
@@ -187,23 +190,20 @@
     gap: 0.3rem;
     background: none;
     border: none;
-    color: var(--text-dim);
+    color: var(--text-muted);
     cursor: pointer;
-    font-size: 0.85rem;
-    padding: 0.3rem 0.6rem;
-    border-radius: 6px;
+    font-size: var(--text-base);
+    padding: 0.4rem 0.6rem;
+    min-height: 36px;
+    border-radius: var(--radius-md);
     transition:
-      color 0.15s,
-      background 0.15s;
+      color var(--transition-fast),
+      background var(--transition-fast);
   }
 
   .action-btn:hover:not(:disabled) {
     color: var(--accent-light);
     background: var(--accent-light-hover-bg);
-  }
-
-  .action-btn:disabled {
-    cursor: not-allowed;
   }
 
   .action-btn.active {
@@ -229,11 +229,11 @@
   }
 
   .icon {
-    font-size: 1rem;
+    font-size: var(--text-icon);
     line-height: 1;
   }
 
   .count {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
   }
 </style>

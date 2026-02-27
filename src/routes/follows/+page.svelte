@@ -215,6 +215,7 @@
   {#if activeTab === "following"}
     <div class="add-follow">
       <input
+        class="input-base"
         bind:value={newPubkey}
         placeholder="Paste a Node ID to follow..."
         onkeydown={handleKey}
@@ -312,7 +313,7 @@
               {copyFeedback === f.pubkey ? "Copied!" : "Copy"}
             </button>
             <button
-              class="unfollow-btn"
+              class="btn-moderation danger"
               onclick={() => confirmUnfollow(f.pubkey)}
             >
               Unfollow
@@ -342,7 +343,7 @@
         >
           <p>Set a local alias for this user</p>
           <input
-            class="alias-input"
+            class="input-base alias-input"
             bind:value={aliasInput}
             placeholder="Alias (leave empty to clear)"
             onkeydown={(e) => {
@@ -421,7 +422,10 @@
               {/await}
             </a>
             <div class="follow-actions">
-              <button class="unmute-btn" onclick={() => unmute(pubkey)}>
+              <button
+                class="btn-moderation warn"
+                onclick={() => unmute(pubkey)}
+              >
                 Unmute
               </button>
             </div>
@@ -455,7 +459,10 @@
               {/await}
             </a>
             <div class="follow-actions">
-              <button class="unblock-btn" onclick={() => unblock(pubkey)}>
+              <button
+                class="btn-moderation danger"
+                onclick={() => unblock(pubkey)}
+              >
                 Unblock
               </button>
             </div>
@@ -479,13 +486,13 @@
     border: none;
     border-bottom: 2px solid transparent;
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     font-weight: 600;
     padding: 0.75rem;
     cursor: pointer;
     transition:
-      color 0.2s,
-      border-color 0.2s;
+      color var(--transition-normal),
+      border-color var(--transition-normal);
   }
 
   .tab:hover {
@@ -498,7 +505,7 @@
   }
 
   .online-status {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
 
@@ -514,48 +521,41 @@
 
   .add-follow input {
     flex: 1;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.6rem 0.75rem;
-    color: var(--text-primary);
-    font-size: 0.85rem;
-  }
-
-  .add-follow input:focus {
-    outline: none;
-    border-color: var(--accent-medium);
-  }
-
-  .add-follow button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 0.6rem 1rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
   }
 
   .follow-btn {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1rem;
+    font-size: var(--text-base);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
     min-width: 72px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
   }
 
-  .add-follow button:hover:not(:disabled) {
+  .follow-btn:hover:not(:disabled) {
     background: var(--accent-hover);
   }
 
-  .add-follow .scan-btn {
+  .scan-btn {
     background: var(--bg-elevated);
     color: var(--accent-light);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1rem;
+    font-size: var(--text-base);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
   }
 
-  .add-follow .scan-btn:hover {
+  .scan-btn:hover {
     background: var(--bg-elevated-hover);
   }
 
@@ -565,9 +565,14 @@
     justify-content: space-between;
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-2xl);
     padding: 0.75rem 1rem;
     margin-bottom: 0.5rem;
+    transition: border-color var(--transition-normal);
+  }
+
+  .follow-item:hover {
+    border-color: var(--border-hover);
   }
 
   .follow-info {
@@ -593,12 +598,12 @@
   .display-name {
     font-weight: 600;
     color: var(--accent-light);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
   }
 
   code {
     color: var(--color-link);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
   }
 
   .follow-actions {
@@ -608,24 +613,10 @@
     flex-shrink: 0;
   }
 
-  .unfollow-btn {
-    background: transparent;
-    color: var(--color-error-light);
-    border: 1px solid var(--color-error-light-border);
-    border-radius: 4px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .unfollow-btn:hover {
-    background: var(--color-error-light-bg);
-  }
-
   .status {
     text-align: center;
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     margin: 0.5rem 0;
   }
 
@@ -637,7 +628,7 @@
 
   .moderation-header {
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     font-weight: 600;
     padding: 0.4rem 0;
     list-style: none;
@@ -652,8 +643,8 @@
     content: "\25B6";
     display: inline-block;
     margin-right: 0.4rem;
-    font-size: 0.65rem;
-    transition: transform 0.15s;
+    font-size: var(--text-xs);
+    transition: transform var(--transition-fast);
   }
 
   details[open] > .moderation-header::before {
@@ -668,47 +659,7 @@
     color: var(--color-error-light);
   }
 
-  .unmute-btn {
-    background: transparent;
-    color: var(--color-warning);
-    border: 1px solid var(--color-warning-border);
-    border-radius: 4px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .unmute-btn:hover {
-    background: var(--color-warning-bg);
-  }
-
-  .unblock-btn {
-    background: transparent;
-    color: var(--color-error-light);
-    border: 1px solid var(--color-error-light-border);
-    border-radius: 4px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .unblock-btn:hover {
-    background: var(--color-error-light-bg);
-  }
-
   .alias-input {
-    width: 100%;
-    background: var(--bg-deep);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.6rem 0.75rem;
-    color: var(--text-primary);
-    font-size: 0.9rem;
     margin-bottom: 1rem;
-  }
-
-  .alias-input:focus {
-    outline: none;
-    border-color: var(--accent-medium);
   }
 </style>

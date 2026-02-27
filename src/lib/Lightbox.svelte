@@ -16,6 +16,9 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div class="lightbox-overlay" onclick={onclose} role="presentation">
+  <button class="lightbox-close" onclick={onclose} aria-label="Close lightbox">
+    &times;
+  </button>
   <img {src} {alt} class="lightbox-img" onclick={(e) => e.stopPropagation()} />
 </div>
 
@@ -23,12 +26,29 @@
   .lightbox-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.92);
+    background: var(--overlay-dark);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 300;
+    z-index: var(--z-lightbox);
     cursor: pointer;
+  }
+
+  .lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    color: var(--text-on-accent);
+    font-size: var(--text-3xl);
+    cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
   }
 
   .lightbox-img {
@@ -36,6 +56,6 @@
     max-height: 95vh;
     object-fit: contain;
     cursor: default;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 </style>

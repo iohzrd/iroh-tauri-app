@@ -80,11 +80,16 @@
     cursor: zoom-in;
     display: block;
     width: 100%;
+    transition: opacity var(--transition-fast);
+  }
+
+  .media-img-btn:hover {
+    opacity: 0.85;
   }
 
   .media-img {
     width: 100%;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     max-height: 400px;
     object-fit: contain;
     background: var(--bg-deep);
@@ -93,14 +98,14 @@
 
   .media-video {
     width: 100%;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     max-height: 400px;
   }
 
   .media-audio {
     background: var(--bg-deep);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.5rem 0.75rem;
     display: flex;
     flex-direction: column;
@@ -109,7 +114,7 @@
 
   .audio-filename {
     color: var(--accent-light);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -118,31 +123,31 @@
   .media-audio audio {
     width: 100%;
     height: 36px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .media-placeholder {
     background: var(--bg-deep);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 2rem;
     text-align: center;
     color: var(--text-tertiary);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
   }
 
   .media-file {
     background: var(--bg-deep);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.75rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     color: var(--accent-light);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     cursor: pointer;
     width: 100%;
-    transition: border-color 0.2s;
+    transition: border-color var(--transition-normal);
   }
 
   .media-file:hover {
@@ -151,11 +156,11 @@
 
   .file-size {
     color: var(--text-tertiary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
   }
 
   .download-label {
     color: var(--color-link);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
   }
 </style>

@@ -90,7 +90,7 @@
   }
 </script>
 
-<div class="quote-composer">
+<div class="composer quote-composer">
   <div class="quoted-preview">
     {#await getDisplayName(quotedPost.author, nodeId)}
       <span class="quote-author">{shortId(quotedPost.author)}</span>
@@ -118,22 +118,19 @@
     onkeydown={handleKey}
     oninput={handleMentionInput}
   ></textarea>
-  <div class="quote-actions">
+  <div class="composer-actions">
     <button class="btn-cancel" onclick={oncancel}>Cancel</button>
-    <button class="btn-accent quote-btn" onclick={submit} disabled={posting}>
+    <button
+      class="btn-accent composer-submit"
+      onclick={submit}
+      disabled={posting}
+    >
       {posting ? "Posting..." : "Quote"}
     </button>
   </div>
 </div>
 
 <style>
-  .quote-composer {
-    position: relative;
-    margin-top: 0.6rem;
-    padding-top: 0.6rem;
-    border-top: 1px solid var(--border-faint);
-  }
-
   .quoted-preview {
     display: flex;
     flex-direction: column;
@@ -142,14 +139,14 @@
     margin-bottom: 0.5rem;
     background: var(--bg-deep);
     border-left: 2px solid var(--accent);
-    border-radius: 0 6px 6px 0;
-    font-size: 0.8rem;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    font-size: var(--text-base);
   }
 
   .quote-author {
     color: var(--accent-light);
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
   }
 
   .quote-text {
@@ -161,18 +158,6 @@
 
   .quote-text.empty {
     font-style: italic;
-    color: var(--text-dim);
-  }
-
-  .quote-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.4rem;
-    justify-content: flex-end;
-  }
-
-  .quote-btn {
-    padding: 0.35rem 0.85rem;
-    font-size: 0.8rem;
+    color: var(--text-muted);
   }
 </style>

@@ -63,13 +63,13 @@
 
   .qr-label {
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     margin: 0 0 1rem;
   }
 
   .qr-wrapper {
     background: #ffffff;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.75rem;
     display: inline-block;
     margin-bottom: 0.75rem;
@@ -92,17 +92,17 @@
     flex: 1;
     background: var(--bg-deep);
     padding: 0.4rem 0.6rem;
-    border-radius: 5px;
-    font-size: 0.6rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
     color: var(--color-link);
     word-break: break-all;
     text-align: left;
   }
 
   .copy-link-btn {
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.4rem 0.6rem;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     min-width: 48px;
   }
 </style>

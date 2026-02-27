@@ -195,7 +195,7 @@
 
   .empty {
     padding: 1rem;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
   }
 
   .not-found {
@@ -205,7 +205,7 @@
   }
 
   .not-found .hint {
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     color: var(--text-tertiary);
   }
 </style>

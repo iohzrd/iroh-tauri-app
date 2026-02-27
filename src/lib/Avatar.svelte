@@ -80,7 +80,7 @@
     align-items: center;
     justify-content: center;
     font-weight: 700;
-    color: white;
+    color: var(--text-on-accent);
     flex-shrink: 0;
     text-transform: uppercase;
   }

@@ -82,7 +82,7 @@
   }
 </script>
 
-<div class="reply-composer">
+<div class="composer reply-composer">
   <MentionAutocomplete
     bind:this={mentionAutocomplete}
     query={mentionQuery}
@@ -98,10 +98,10 @@
     onkeydown={handleKey}
     oninput={handleMentionInput}
   ></textarea>
-  <div class="reply-actions">
+  <div class="composer-actions">
     <button class="btn-cancel" onclick={oncancel}>Cancel</button>
     <button
-      class="btn-accent reply-btn"
+      class="btn-accent composer-submit"
       onclick={submit}
       disabled={posting || !content.trim()}
     >
@@ -109,24 +109,3 @@
     </button>
   </div>
 </div>
-
-<style>
-  .reply-composer {
-    position: relative;
-    margin-top: 0.6rem;
-    padding-top: 0.6rem;
-    border-top: 1px solid var(--border-faint);
-  }
-
-  .reply-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.4rem;
-    justify-content: flex-end;
-  }
-
-  .reply-btn {
-    padding: 0.35rem 0.85rem;
-    font-size: 0.8rem;
-  }
-</style>

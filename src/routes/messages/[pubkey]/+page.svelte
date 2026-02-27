@@ -529,8 +529,10 @@
             {:else}
               <span class="att-file">{att.filename}</span>
             {/if}
-            <button class="att-remove" onclick={() => removeAttachment(i)}
-              >x</button
+            <button
+              class="att-remove"
+              onclick={() => removeAttachment(i)}
+              aria-label="Remove attachment">x</button
             >
           </div>
         {/each}
@@ -557,7 +559,7 @@
         {uploading ? "..." : "+"}
       </button>
       <textarea
-        class="compose-input"
+        class="input-base compose-input"
         placeholder="Type a message..."
         bind:value={messageText}
         onkeydown={handleKeydown}
@@ -579,8 +581,8 @@
   .chat-layout {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 60px);
-    margin: -1rem -1rem -2rem;
+    height: calc(100dvh - 60px - env(safe-area-inset-top, 0px));
+    margin: -1rem -1rem calc(-2rem - env(safe-area-inset-bottom, 0px));
   }
 
   .chat-header {
@@ -596,7 +598,7 @@
   .back-btn {
     color: var(--accent-medium);
     text-decoration: none;
-    font-size: 1.2rem;
+    font-size: var(--text-icon-lg);
     padding: 0.25rem;
   }
 
@@ -611,7 +613,7 @@
 
   .header-name {
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: var(--text-lg);
     color: var(--text-primary);
   }
 
@@ -631,7 +633,7 @@
     gap: 0.4rem;
     padding: 0.5rem;
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
   }
 
   .date-separator {
@@ -643,9 +645,9 @@
   .date-separator span {
     background: var(--bg-elevated);
     color: var(--text-secondary);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     padding: 0.2rem 0.75rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
   }
 
   .message-row {
@@ -663,27 +665,27 @@
   .message-bubble {
     max-width: 75%;
     padding: 0.5rem 0.75rem;
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     word-break: break-word;
   }
 
   .sent .message-bubble {
     background: var(--accent);
-    color: white;
-    border-bottom-right-radius: 4px;
+    color: var(--text-on-accent);
+    border-bottom-right-radius: var(--radius-sm);
   }
 
   .received .message-bubble {
     background: var(--bg-surface);
     color: var(--text-primary);
     border: 1px solid var(--border);
-    border-bottom-left-radius: 4px;
+    border-bottom-left-radius: var(--radius-sm);
   }
 
   .message-text {
     margin: 0;
     white-space: pre-wrap;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     line-height: 1.4;
   }
 
@@ -697,7 +699,7 @@
   .media-img {
     max-width: 100%;
     max-height: 300px;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     object-fit: contain;
     cursor: pointer;
   }
@@ -705,7 +707,7 @@
   .media-video {
     max-width: 100%;
     max-height: 300px;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
   }
 
   .audio-attachment {
@@ -717,7 +719,7 @@
 
   .audio-filename {
     color: var(--accent-light);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -726,7 +728,7 @@
   .audio-attachment audio {
     width: 100%;
     height: 36px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .file-attachment {
@@ -735,10 +737,10 @@
     gap: 0.4rem;
     background: var(--bg-elevated);
     border: 1px solid var(--border-hover);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.4rem 0.6rem;
     color: var(--accent-light);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     cursor: pointer;
   }
 
@@ -747,7 +749,7 @@
   }
 
   .file-icon {
-    font-size: 1rem;
+    font-size: var(--text-icon);
   }
 
   .file-name {
@@ -759,7 +761,7 @@
 
   .file-size {
     color: var(--text-secondary);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     flex-shrink: 0;
   }
 
@@ -772,12 +774,12 @@
   }
 
   .message-time {
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     opacity: 0.6;
   }
 
   .delivery-status {
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
     opacity: 0.6;
   }
 
@@ -797,7 +799,7 @@
     background: none;
     border: none;
     color: var(--color-error-light);
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
     cursor: pointer;
     padding: 0;
     text-decoration: underline;
@@ -814,7 +816,7 @@
     gap: 0.3rem;
     padding: 0.3rem 0;
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-style: italic;
   }
 
@@ -863,13 +865,13 @@
     align-items: center;
     justify-content: center;
     color: var(--text-tertiary);
-    font-size: 0.9rem;
+    font-size: var(--text-base);
   }
 
   .send-error {
     background: var(--color-error-light-bg);
     color: var(--color-error-light);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     padding: 0.4rem 1rem;
     border-top: 1px solid var(--color-error-light-border);
   }
@@ -893,7 +895,7 @@
     width: 60px;
     height: 60px;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border);
   }
 
@@ -904,8 +906,8 @@
     width: 60px;
     height: 60px;
     background: var(--bg-elevated);
-    border-radius: 6px;
-    font-size: 0.6rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
     color: var(--text-secondary);
     text-align: center;
     padding: 4px;
@@ -915,15 +917,15 @@
 
   .att-remove {
     position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 18px;
-    height: 18px;
+    top: -6px;
+    right: -6px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     background: var(--color-error-light);
-    color: white;
+    color: var(--text-on-accent);
     border: none;
-    font-size: 0.6rem;
+    font-size: var(--text-sm);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -936,6 +938,7 @@
     align-items: flex-end;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     background: var(--bg-base);
     flex-shrink: 0;
@@ -944,9 +947,9 @@
   .attach-btn {
     background: none;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     color: var(--accent-medium);
-    font-size: 1.1rem;
+    font-size: var(--text-xl);
     width: 36px;
     height: 36px;
     cursor: pointer;
@@ -963,28 +966,14 @@
 
   .compose-input {
     flex: 1;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.5rem 0.75rem;
-    color: var(--text-primary);
-    font-size: 0.9rem;
+    border-radius: var(--radius-lg);
+    font-size: var(--text-base);
     resize: none;
     min-height: 36px;
     max-height: 120px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .compose-input:focus {
-    border-color: var(--accent);
-  }
-
-  .compose-input::placeholder {
-    color: var(--text-dim);
   }
 
   .send-btn {
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
   }
 </style>

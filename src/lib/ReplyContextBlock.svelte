@@ -52,7 +52,7 @@
   .reply-context {
     display: block;
     margin-bottom: 0.35rem;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
     text-decoration: none;
   }
@@ -70,8 +70,8 @@
     padding: 0.35rem 0.6rem;
     background: var(--bg-deep);
     border-left: 2px solid var(--border-hover);
-    border-radius: 0 6px 6px 0;
-    font-size: 0.75rem;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     text-decoration: none;
     overflow: hidden;

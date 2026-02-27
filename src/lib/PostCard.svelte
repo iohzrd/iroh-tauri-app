@@ -90,7 +90,11 @@
         <Timeago timestamp={displayPost.timestamp} />
       </a>
       {#if showDelete && post.author === nodeId && ondelete}
-        <button class="delete-btn" onclick={() => ondelete(post.id)}>
+        <button
+          class="delete-btn"
+          onclick={() => ondelete(post.id)}
+          aria-label="Delete post"
+        >
           &times;
         </button>
       {/if}
@@ -130,11 +134,11 @@
   .post {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     padding: 0.875rem 1rem;
     margin-bottom: 0.4rem;
-    transition: border-color 0.2s;
-    animation: fadeIn 0.3s ease-out;
+    transition: border-color var(--transition-normal);
+    animation: fadeIn var(--transition-slow) ease-out;
   }
 
   .post:hover {
@@ -146,7 +150,7 @@
     align-items: center;
     gap: 0.3rem;
     margin-bottom: 0.4rem;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
 
@@ -190,7 +194,7 @@
 
   .author {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     color: var(--accent-light);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -204,15 +208,20 @@
   .delete-btn {
     background: none;
     border: none;
-    color: var(--text-dim);
-    font-size: 1.1rem;
+    color: var(--text-muted);
+    font-size: var(--text-xl);
     cursor: pointer;
-    padding: 0.15rem 0.3rem;
+    padding: 0.25rem;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     line-height: 1;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition:
-      color 0.15s,
-      background 0.15s;
+      color var(--transition-fast),
+      background var(--transition-fast);
   }
 
   .delete-btn:hover {
@@ -222,13 +231,13 @@
 
   .time-link {
     color: var(--text-tertiary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     white-space: nowrap;
     text-decoration: none;
   }
 
   .time-link:hover {
-    color: #999;
+    color: var(--text-secondary);
     text-decoration: underline;
   }
 
@@ -236,7 +245,7 @@
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    font-size: 0.95rem;
+    font-size: var(--text-lg);
     line-height: 1.55;
     color: var(--text-post);
   }

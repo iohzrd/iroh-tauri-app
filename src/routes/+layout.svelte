@@ -271,7 +271,7 @@
     position: sticky;
     top: 0;
     background: var(--bg-base);
-    z-index: 10;
+    z-index: var(--z-nav);
     padding-top: env(safe-area-inset-top);
   }
 
@@ -279,13 +279,13 @@
     flex: 1;
     text-align: center;
     padding: 0.7rem 0.25rem;
-    color: var(--text-inactive);
+    color: var(--text-muted);
     text-decoration: none;
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     transition:
-      color 0.15s,
-      border-color 0.15s;
+      color var(--transition-fast),
+      border-color var(--transition-fast);
     border-bottom: 2px solid transparent;
     white-space: nowrap;
   }
@@ -300,16 +300,9 @@
   }
 
   .unread-badge {
-    background: var(--accent);
-    color: white;
     font-size: 0.55rem;
-    font-weight: 700;
-    border-radius: 999px;
     min-width: 14px;
     height: 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     padding: 0 3px;
     margin-left: 1px;
     vertical-align: super;
@@ -318,9 +311,11 @@
   .status-indicator {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0 0.5rem;
+    justify-content: center;
+    padding: 0.5rem;
     flex-shrink: 0;
+    min-width: 36px;
+    min-height: 36px;
   }
 
   .status-dot {
@@ -347,7 +342,7 @@
     background: var(--danger-bg);
     border-bottom: 1px solid var(--danger-border);
     color: var(--danger-text);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     font-weight: 500;
   }
 
@@ -372,6 +367,7 @@
 
   main {
     padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
     flex: 1;
   }
 </style>

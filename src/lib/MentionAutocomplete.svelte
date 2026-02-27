@@ -127,11 +127,11 @@
     right: 0;
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     max-height: 240px;
     overflow-y: auto;
-    z-index: 20;
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+    z-index: var(--z-dropdown);
+    box-shadow: var(--shadow-md);
   }
 
   .mention-option {
@@ -144,7 +144,7 @@
     border: none;
     color: var(--text-primary);
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     text-align: left;
   }
 
@@ -160,7 +160,7 @@
 
   .mention-id {
     color: var(--text-tertiary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     margin-left: auto;
   }
 </style>

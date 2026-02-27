@@ -449,6 +449,7 @@
         onselect={insertMention}
       />
       <textarea
+        class="input-base compose-textarea"
         bind:value={newPost}
         placeholder="What's on your mind?"
         rows="3"
@@ -477,8 +478,10 @@
               {:else}
                 <div class="file-icon">{att.filename}</div>
               {/if}
-              <button class="remove-btn" onclick={() => removeAttachment(i)}
-                >&times;</button
+              <button
+                class="remove-btn"
+                onclick={() => removeAttachment(i)}
+                aria-label="Remove attachment">&times;</button
               >
             </div>
           {/each}
@@ -669,13 +672,13 @@
     padding: 0.6rem 0.85rem;
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     margin-bottom: 1rem;
   }
 
   .node-id .label {
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-weight: 600;
@@ -683,16 +686,9 @@
 
   .node-id code {
     color: var(--color-link);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     flex: 1;
-    font-family: "SF Mono", "Fira Code", monospace;
-  }
-
-  .copy-btn {
-    padding: 0.25rem 0.6rem;
-    font-size: 0.7rem;
-    font-weight: 500;
-    min-width: 52px;
+    font-family: var(--font-mono);
   }
 
   .compose {
@@ -700,21 +696,11 @@
     margin-bottom: 1.25rem;
   }
 
-  .compose textarea {
-    width: 100%;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+  .compose-textarea {
+    border-radius: var(--radius-xl);
     padding: 0.75rem;
-    color: var(--text-primary);
-    font-size: 0.95rem;
+    font-size: var(--text-lg);
     resize: vertical;
-    transition: border-color 0.2s;
-  }
-
-  .compose textarea:focus {
-    outline: none;
-    border-color: var(--accent-medium);
   }
 
   .compose-meta {
@@ -725,13 +711,13 @@
   }
 
   .hint {
-    font-size: 0.7rem;
-    color: var(--text-faint);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
   }
 
   .char-count {
-    font-size: 0.75rem;
-    color: var(--text-dim);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
   }
 
   .char-count.warn {
@@ -745,17 +731,17 @@
   }
 
   .attach-btn {
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.55rem 1rem;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     font-weight: 500;
   }
 
   .post-btn {
     flex: 1;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.55rem;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
   }
 
   .attachment-previews {
@@ -769,7 +755,7 @@
     position: relative;
     width: 80px;
     height: 80px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     border: 1px solid var(--border);
   }
@@ -789,7 +775,7 @@
     justify-content: center;
     background: var(--bg-deep);
     color: var(--text-secondary);
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
     text-align: center;
     padding: 0.25rem;
     word-break: break-all;
@@ -797,15 +783,15 @@
 
   .remove-btn {
     position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 20px;
-    height: 20px;
+    top: -4px;
+    right: -4px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
+    background: var(--overlay-medium);
+    color: var(--text-on-accent);
     border: none;
-    font-size: 0.75rem;
+    font-size: var(--text-base);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -822,14 +808,14 @@
     background: var(--bg-elevated);
     color: var(--accent-light);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.5rem 1.5rem;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     transition:
-      background 0.15s,
-      color 0.15s;
+      background var(--transition-fast),
+      color var(--transition-fast);
   }
 
   .refresh:hover:not(:disabled) {
@@ -837,32 +823,27 @@
     color: var(--accent-light-hover);
   }
 
-  .refresh:disabled {
-    opacity: 0.7;
-    cursor: default;
-  }
-
   .scroll-top {
     position: fixed;
     bottom: 1.5rem;
     right: 1.5rem;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: var(--accent);
-    color: white;
+    color: var(--text-on-accent);
     border: none;
-    font-size: 1.2rem;
+    font-size: var(--text-icon-lg);
     cursor: pointer;
-    z-index: 50;
+    z-index: var(--z-fab);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-sm);
     transition:
-      background 0.2s,
-      transform 0.2s;
-    animation: fadeIn 0.2s ease-out;
+      background var(--transition-normal),
+      transform var(--transition-normal);
+    animation: fadeIn var(--transition-normal) ease-out;
   }
 
   .scroll-top:hover {
@@ -873,7 +854,7 @@
   .sync-failures {
     margin: 0.5rem 0;
     border: 1px solid var(--danger-bg);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--danger-bg-subtle);
     overflow: hidden;
   }
@@ -887,7 +868,7 @@
     border: none;
     color: var(--danger-text);
     padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     cursor: pointer;
   }
 
@@ -896,7 +877,7 @@
   }
 
   .toggle-arrow {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
   }
 
@@ -907,7 +888,7 @@
   }
 
   .sync-failures-list li {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     padding: 0.15rem 0;
   }
@@ -924,13 +905,13 @@
     padding-bottom: 0.5rem;
     overflow: hidden;
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
   }
 
   .pull-arrow {
-    font-size: 1.5rem;
-    color: var(--text-dim);
-    transition: color 0.15s;
+    font-size: var(--text-icon-xl);
+    color: var(--text-muted);
+    transition: color var(--transition-fast);
   }
 
   .pull-arrow.ready {

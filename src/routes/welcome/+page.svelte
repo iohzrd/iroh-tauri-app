@@ -109,7 +109,7 @@
           {/if}
         </div>
       {/if}
-      <button class="primary-btn" onclick={() => (step = 1)}>
+      <button class="btn-accent primary-btn" onclick={() => (step = 1)}>
         Set Up Profile
       </button>
     </div>
@@ -137,6 +137,7 @@
       <label class="field">
         <span class="field-label">Display Name</span>
         <input
+          class="input-base"
           type="text"
           bind:value={displayName}
           placeholder="Your name"
@@ -147,6 +148,7 @@
       <label class="field">
         <span class="field-label">Bio</span>
         <textarea
+          class="input-base"
           bind:value={bio}
           placeholder="Tell people about yourself (optional)"
           rows="3"
@@ -157,7 +159,7 @@
       <div class="actions">
         <button class="secondary-btn" onclick={() => (step = 0)}>Back</button>
         <button
-          class="primary-btn"
+          class="btn-accent primary-btn"
           onclick={saveProfile}
           disabled={!displayName.trim() || saving}
         >
@@ -185,26 +187,26 @@
   }
 
   h1 {
-    font-size: 1.8rem;
+    font-size: var(--text-3xl);
     color: var(--text-primary);
     margin: 0 0 0.5rem;
   }
 
   h2 {
-    font-size: 1.3rem;
+    font-size: var(--text-2xl);
     color: var(--text-primary);
     margin: 0 0 1.5rem;
   }
 
   .subtitle {
     color: var(--accent-medium);
-    font-size: 0.95rem;
+    font-size: var(--text-lg);
     margin: 0 0 1rem;
   }
 
   .desc {
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     line-height: 1.6;
     margin: 0 0 1.5rem;
   }
@@ -215,7 +217,7 @@
 
   .label {
     color: var(--text-tertiary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin: 0 0 0.3rem;
@@ -224,11 +226,11 @@
   .node-id {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.4rem 0.8rem;
     color: var(--accent-light);
-    font-family: monospace;
-    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
     cursor: pointer;
   }
 
@@ -239,7 +241,7 @@
   .copied {
     display: block;
     color: var(--color-success);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     margin-top: 0.3rem;
   }
 
@@ -276,12 +278,12 @@
 
   .avatar-placeholder {
     color: var(--text-tertiary);
-    font-size: 1.5rem;
+    font-size: var(--text-icon-xl);
   }
 
   .avatar-hint {
     color: var(--text-tertiary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
   }
 
   .field {
@@ -289,33 +291,9 @@
     text-align: left;
   }
 
-  .field input,
-  .field textarea {
-    width: 100%;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.5rem 0.75rem;
-    color: var(--text-primary);
-    font-size: 0.9rem;
-    font-family: inherit;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .field input:focus,
-  .field textarea:focus {
-    border-color: var(--accent);
-  }
-
   .field textarea {
     resize: vertical;
     min-height: 60px;
-  }
-
-  .field input::placeholder,
-  .field textarea::placeholder {
-    color: var(--text-dim);
   }
 
   .actions {
@@ -326,32 +304,22 @@
 
   .primary-btn {
     flex: 1;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.7rem 1.5rem;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-
-  .primary-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
+    font-size: var(--text-lg);
   }
 
   .secondary-btn {
     background: none;
     border: 1px solid var(--border-hover);
     color: var(--text-secondary);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.7rem 1.5rem;
-    font-size: 0.95rem;
+    font-size: var(--text-lg);
     cursor: pointer;
     transition:
-      color 0.15s,
-      border-color 0.15s;
+      color var(--transition-fast),
+      border-color var(--transition-fast);
   }
 
   .secondary-btn:hover {

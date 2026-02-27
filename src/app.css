@@ -12,11 +12,10 @@
 
   /* -- Text -- */
   --text-primary: #e0e0e0;
-  --text-secondary: #888;
-  --text-tertiary: #666;
-  --text-dim: #555;
-  --text-faint: #444;
-  --text-inactive: #777;
+  --text-secondary: #9a9aaa;
+  --text-tertiary: #8a8a9a;
+  --text-muted: #7f7f92;
+  --text-on-accent: #ffffff;
   --text-post: #e8e8e8;
   --text-quoted: #aaa;
 
@@ -66,12 +65,69 @@
   --glow-success: #22c55e80;
   --glow-error: #ef444480;
 
+  /* -- Shadows -- */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
   /* -- Danger zone (relay banner, sync failures) -- */
   --danger-bg: #7f1d1d;
   --danger-bg-subtle: #1a0a0a;
   --danger-bg-subtle-hover: #2a0a0a;
   --danger-border: #991b1b;
   --danger-text: #fca5a5;
+
+  /* -- Overlays -- */
+  --overlay-dark: rgba(0, 0, 0, 0.92);
+  --overlay-medium: rgba(0, 0, 0, 0.7);
+  --overlay-light: rgba(0, 0, 0, 0.6);
+  --overlay-white-faint: rgba(255, 255, 255, 0.3);
+
+  /* -- Z-index layers -- */
+  --z-nav: 10;
+  --z-dropdown: 20;
+  --z-fab: 50;
+  --z-modal: 100;
+  --z-toast: 150;
+  --z-scanner: 200;
+  --z-lightbox: 300;
+
+  /* -- Transitions -- */
+  --transition-fast: 0.15s;
+  --transition-normal: 0.2s;
+  --transition-slow: 0.3s;
+
+  /* -- Border radius -- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-pill: 11px;
+  --radius-full: 999px;
+
+  /* -- Spacing scale -- */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+
+  /* -- Font sizes -- */
+  --text-xs: 0.65rem;
+  --text-sm: 0.75rem;
+  --text-base: 0.875rem;
+  --text-lg: 0.95rem;
+  --text-xl: 1.1rem;
+  --text-2xl: 1.3rem;
+  --text-3xl: 1.8rem;
+  --text-icon: 1rem;
+  --text-icon-lg: 1.2rem;
+  --text-icon-xl: 1.5rem;
+
+  /* -- Font family -- */
+  --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
 }
 
 /* ==========================================================================
@@ -98,9 +154,43 @@ body {
   background-color: var(--bg-base);
 }
 
-/* Normalize buttons: inherit font-family and remove default styles */
-button {
+/* Normalize form elements: inherit font-family */
+button,
+input,
+textarea,
+select {
   font-family: inherit;
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
+
+/* -- Focus-visible: keyboard-only focus ring -- */
+
+:focus-visible {
+  outline: 2px solid var(--accent-medium);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--accent-medium);
+  box-shadow: 0 0 0 1px var(--accent-medium);
+}
+
+/* -- Reduced motion: respect user preference -- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ==========================================================================
@@ -114,23 +204,44 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* -- Input base (shared input/textarea styles for all forms) -- */
+
+.input-base {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.75rem;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  outline: none;
+  transition: border-color var(--transition-normal);
+}
+
+.input-base:focus {
+  border-color: var(--accent-medium);
+}
+
+.input-base::placeholder {
+  color: var(--text-muted);
+}
+
 /* -- Textarea base (compose boxes: feed, reply, quote, chat) -- */
 
 .textarea-base {
   width: 100%;
   background: var(--bg-deep);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 0.6rem 0.75rem;
   color: var(--text-primary);
-  font-family: inherit;
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   resize: vertical;
-  transition: border-color 0.2s;
+  outline: none;
+  transition: border-color var(--transition-normal);
 }
 
 .textarea-base:focus {
-  outline: none;
   border-color: var(--accent-medium);
 }
 
@@ -138,7 +249,7 @@ button:disabled {
 
 .section-title {
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0 0 0.5rem;
@@ -152,8 +263,10 @@ button:disabled {
 
 .field-label {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--text-base);
   color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   margin-bottom: 0.3rem;
 }
 
@@ -206,7 +319,7 @@ button:disabled {
 
 button .btn-spinner {
   border-color: var(--white-faint);
-  border-top-color: white;
+  border-top-color: var(--text-on-accent);
 }
 
 /* -- Sentinel (infinite scroll trigger) -- */
@@ -220,7 +333,7 @@ button .btn-spinner {
   min-height: 1px;
   padding: 0.5rem 0;
   color: var(--accent-light);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
 }
 
 /* -- Modal system -- */
@@ -228,17 +341,17 @@ button .btn-spinner {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--z-modal);
 }
 
 .modal {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   max-width: 320px;
   width: 90%;
@@ -259,10 +372,11 @@ button .btn-spinner {
   background: var(--bg-elevated);
   color: var(--accent-light);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.5rem;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   cursor: pointer;
+  min-height: 44px;
 }
 
 .modal-cancel:hover {
@@ -272,13 +386,14 @@ button .btn-spinner {
 .modal-confirm {
   flex: 1;
   background: var(--color-error-dark);
-  color: white;
+  color: var(--text-on-accent);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.5rem;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
+  min-height: 44px;
 }
 
 .modal-confirm:hover {
@@ -303,11 +418,11 @@ button .btn-spinner {
   background: var(--bg-elevated);
   color: var(--text-primary);
   padding: 0.6rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  z-index: 200;
-  animation: toastIn 0.3s ease-out;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
+  z-index: var(--z-toast);
+  animation: toastIn var(--transition-slow) ease-out;
+  box-shadow: var(--shadow-md);
 }
 
 .toast.error {
@@ -331,7 +446,7 @@ button .btn-spinner {
   display: inline-block;
   color: var(--accent-medium);
   text-decoration: none;
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   margin-bottom: 1rem;
 }
 
@@ -342,7 +457,7 @@ button .btn-spinner {
 /* -- Page title -- */
 
 .page-title {
-  font-size: 1.1rem;
+  font-size: var(--text-xl);
   color: var(--text-primary);
   margin: 0 0 0.75rem;
 }
@@ -360,14 +475,15 @@ button .btn-spinner {
   background: var(--bg-elevated);
   color: var(--text-secondary);
   border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 0.3rem 0.75rem;
-  font-size: 0.75rem;
+  border-radius: var(--radius-full);
+  padding: 0.4rem 0.85rem;
+  font-size: var(--text-sm);
   cursor: pointer;
+  min-height: 36px;
   transition:
-    background 0.2s,
-    color 0.2s,
-    border-color 0.2s;
+    background var(--transition-normal),
+    color var(--transition-normal),
+    border-color var(--transition-normal);
 }
 
 .filter-chip:hover {
@@ -377,7 +493,7 @@ button .btn-spinner {
 
 .filter-chip.active {
   background: var(--accent);
-  color: white;
+  color: var(--text-on-accent);
   border-color: var(--accent);
 }
 
@@ -390,7 +506,7 @@ button .btn-spinner {
 }
 
 .empty .hint {
-  font-size: 0.8rem;
+  font-size: var(--text-base);
   color: var(--text-tertiary);
 }
 
@@ -398,14 +514,14 @@ button .btn-spinner {
 
 .btn-accent {
   background: var(--accent);
-  color: white;
+  color: var(--text-on-accent);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.5rem 1rem;
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .btn-accent:hover:not(:disabled) {
@@ -416,15 +532,15 @@ button .btn-spinner {
   background: var(--bg-elevated);
   color: var(--accent-light);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.35rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   white-space: nowrap;
   text-align: center;
   transition:
-    background 0.15s,
-    color 0.15s;
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .btn-elevated:hover:not(:disabled) {
@@ -435,18 +551,96 @@ button .btn-spinner {
   background: var(--bg-elevated);
   color: var(--text-secondary);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.35rem 0.85rem;
-  font-size: 0.8rem;
+  font-size: var(--text-base);
   cursor: pointer;
   transition:
-    color 0.15s,
-    background 0.15s;
+    color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .btn-cancel:hover {
   color: var(--accent-light);
   background: var(--bg-elevated-hover);
+}
+
+/* -- Copy button (shared across feed, profile, QR modal) -- */
+
+.copy-btn {
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  min-width: 52px;
+  min-height: 36px;
+}
+
+/* -- Unread badge -- */
+
+.unread-badge {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* -- Moderation buttons (unfollow, unmute, unblock) -- */
+
+.btn-moderation {
+  background: transparent;
+  border: 1px solid var(--color-error-light-border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.75rem;
+  font-size: var(--text-base);
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.btn-moderation.danger {
+  color: var(--color-error-light);
+}
+
+.btn-moderation.danger:hover {
+  background: var(--color-error-light-bg);
+}
+
+.btn-moderation.warn {
+  color: var(--color-warning);
+  border-color: var(--color-warning-border);
+}
+
+.btn-moderation.warn:hover {
+  background: var(--color-warning-bg);
+}
+
+/* -- Inline composer (reply, quote) -- */
+
+.composer {
+  position: relative;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-faint);
+}
+
+.composer-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  justify-content: flex-end;
+}
+
+.composer-submit {
+  padding: 0.35rem 0.85rem;
+  font-size: var(--text-base);
 }
 
 /* -- Shared keyframes -- */

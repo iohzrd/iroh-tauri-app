@@ -80,13 +80,13 @@
   <div class="new-conversation">
     <input
       type="text"
-      class="new-input"
+      class="input-base new-input"
       placeholder="Paste a Node ID to start a conversation..."
       bind:value={newPubkey}
       onkeydown={(e) => e.key === "Enter" && startConversation()}
     />
     <button
-      class="btn-accent new-btn"
+      class="btn-accent"
       onclick={startConversation}
       disabled={!newPubkey.trim()}
     >
@@ -143,10 +143,6 @@
 {/if}
 
 <style>
-  .page-title {
-    color: var(--accent-medium);
-  }
-
   .new-conversation {
     display: flex;
     gap: 0.5rem;
@@ -155,27 +151,12 @@
 
   .new-input {
     flex: 1;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.5rem 0.75rem;
-    color: var(--text-primary);
-    font-size: 0.8rem;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .new-input:focus {
-    border-color: var(--accent);
-  }
-
-  .new-input::placeholder {
-    color: var(--text-dim);
+    font-size: var(--text-base);
   }
 
   .new-error {
     color: var(--color-error-light);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     margin: -0.5rem 0 0.75rem;
   }
 
@@ -190,10 +171,10 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem;
-    border-radius: 8px;
+    border-radius: var(--radius-2xl);
     text-decoration: none;
     color: inherit;
-    transition: background 0.15s;
+    transition: background var(--transition-fast);
   }
 
   .conversation-row:hover {
@@ -214,7 +195,7 @@
 
   .conversation-name {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -223,7 +204,7 @@
 
   .conversation-time {
     color: var(--text-tertiary);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     flex-shrink: 0;
   }
 
@@ -236,7 +217,7 @@
 
   .preview-text {
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -245,21 +226,13 @@
 
   .empty-preview {
     font-style: italic;
-    color: var(--text-dim);
+    color: var(--text-muted);
   }
 
   .unread-badge {
-    background: var(--accent);
-    color: white;
-    font-size: 0.7rem;
-    font-weight: 700;
-    border-radius: 999px;
+    font-size: var(--text-sm);
     min-width: 20px;
     height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 0 6px;
-    flex-shrink: 0;
   }
 </style>

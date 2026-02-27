@@ -757,21 +757,21 @@
   .profile-info h2 {
     margin: 0;
     color: var(--accent-medium);
-    font-size: 1.1rem;
+    font-size: var(--text-xl);
   }
 
   .bio {
     margin: 0.25rem 0 0;
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
   }
 
   .private-badge {
     display: inline-block;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--color-warning);
     border: 1px solid var(--color-warning-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.15rem 0.5rem;
     margin-top: 0.25rem;
   }
@@ -786,17 +786,15 @@
   code {
     background: var(--bg-deep);
     padding: 0.5rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.7rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
     word-break: break-all;
     color: var(--color-link);
     flex: 1;
   }
 
-  .copy-btn {
-    border-radius: 4px;
-    padding: 0.4rem 0.75rem;
-    min-width: 52px;
+  code {
+    font-family: var(--font-mono);
   }
 
   .action-row {
@@ -808,11 +806,11 @@
   .follow-toggle {
     flex: 1;
     background: var(--accent);
-    color: white;
+    color: var(--text-on-accent);
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.5rem;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     font-weight: 600;
     cursor: pointer;
     display: inline-flex;
@@ -825,14 +823,14 @@
     background: var(--bg-elevated);
     color: var(--accent-light);
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.5rem 1rem;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     font-weight: 600;
     cursor: pointer;
     text-decoration: none;
     text-align: center;
-    transition: background 0.2s;
+    transition: background var(--transition-normal);
   }
 
   .message-btn:hover {
@@ -863,9 +861,9 @@
     flex: 1;
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.35rem;
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     display: inline-flex;
@@ -873,9 +871,9 @@
     justify-content: center;
     min-height: 1.8rem;
     transition:
-      color 0.15s,
-      background 0.15s,
-      border-color 0.15s;
+      color var(--transition-fast),
+      background var(--transition-fast),
+      border-color var(--transition-fast);
   }
 
   .mod-btn.mute {
@@ -925,7 +923,7 @@
   }
 
   .sync-info {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
     font-weight: 400;
     text-transform: none;
@@ -936,7 +934,7 @@
   .offline-notice {
     text-align: center;
     color: var(--text-tertiary);
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     padding: 0.75rem;
     border-top: 1px solid var(--border);
     margin-top: 0.5rem;
@@ -944,7 +942,7 @@
 
   .edit-btn {
     padding: 0.4rem 0.85rem;
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     font-weight: 500;
     flex-shrink: 0;
   }
@@ -952,24 +950,19 @@
   .edit-heading {
     color: var(--accent-medium);
     margin: 0 0 1rem;
-    font-size: 1.1rem;
+    font-size: var(--text-xl);
   }
 
   .edit-form {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 1.25rem;
     margin-bottom: 1rem;
   }
 
   .field {
     margin-bottom: 1rem;
-  }
-
-  .field-label {
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
   .avatar-row {
@@ -993,9 +986,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
+    font-size: var(--text-icon);
     font-weight: 700;
-    color: white;
+    color: var(--text-on-accent);
     flex-shrink: 0;
     text-transform: uppercase;
   }
@@ -1009,9 +1002,9 @@
     background: var(--bg-elevated);
     color: var(--accent-light);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     cursor: pointer;
   }
 
@@ -1032,16 +1025,17 @@
     width: 100%;
     background: var(--bg-deep);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.6rem 0.75rem;
     color: var(--text-primary);
-    font-size: 0.9rem;
+    font-size: var(--text-base);
+    outline: none;
+    transition: border-color var(--transition-normal);
     resize: vertical;
   }
 
   .edit-form input:not([type="checkbox"]):focus,
   .edit-form textarea:focus {
-    outline: none;
     border-color: var(--accent-medium);
   }
 
@@ -1069,8 +1063,13 @@
     width: 40px;
     height: 22px;
     background: var(--bg-elevated);
-    border-radius: 11px;
-    transition: background 0.2s;
+    border-radius: var(--radius-pill);
+    transition: background var(--transition-normal);
+  }
+
+  .toggle-switch input:focus-visible + .toggle-track {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .toggle-switch.on .toggle-track {
@@ -1087,23 +1086,23 @@
     top: 3px;
     left: 3px;
     transition:
-      transform 0.2s,
-      background 0.2s;
+      transform var(--transition-normal),
+      background var(--transition-normal);
   }
 
   .toggle-switch.on .toggle-thumb {
     transform: translateX(18px);
-    background: #fff;
+    background: var(--text-primary);
   }
 
   .toggle-text {
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     color: var(--text-primary);
   }
 
   .field-hint {
     margin: 0.25rem 0 0;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
 
@@ -1116,12 +1115,12 @@
   .cancel-btn {
     flex: 1;
     padding: 0.6rem;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
   }
 
   .save-btn {
     flex: 1;
     padding: 0.6rem;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
   }
 </style>

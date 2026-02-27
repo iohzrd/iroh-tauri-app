@@ -66,10 +66,10 @@
     padding: 0.6rem 0.75rem;
     background: var(--bg-deep);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.2s;
+    transition: border-color var(--transition-normal);
   }
 
   .quoted-post:hover {
@@ -77,8 +77,8 @@
   }
 
   .quoted-post.unavailable {
-    color: var(--text-dim);
-    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-size: var(--text-base);
     font-style: italic;
   }
 
@@ -87,7 +87,7 @@
     align-items: center;
     gap: 0.4rem;
     margin-bottom: 0.3rem;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
   }
 
@@ -98,7 +98,7 @@
 
   .quoted-content {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     line-height: 1.4;
     color: var(--text-quoted);
     white-space: pre-wrap;
