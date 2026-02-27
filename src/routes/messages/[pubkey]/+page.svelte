@@ -12,6 +12,7 @@
     getCachedAvatarTicket,
     isImage,
     isVideo,
+    isAudio,
     formatSize,
   } from "$lib/utils";
   import { createBlobCache } from "$lib/blobs";
@@ -446,6 +447,13 @@
                         preload="metadata"
                       ></video>
                     {/await}
+                  {:else if isAudio(att.mime_type)}
+                    {#await blobs.getBlobUrl(att) then url}
+                      <div class="audio-attachment">
+                        <span class="audio-filename">{att.filename}</span>
+                        <audio src={url} controls preload="metadata"></audio>
+                      </div>
+                    {/await}
                   {:else}
                     <button
                       class="file-attachment"
@@ -702,6 +710,27 @@
     max-width: 100%;
     max-height: 300px;
     border-radius: 8px;
+  }
+
+  .audio-attachment {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    width: 100%;
+  }
+
+  .audio-filename {
+    color: #c4b5fd;
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .audio-attachment audio {
+    width: 100%;
+    height: 36px;
+    border-radius: 4px;
   }
 
   .file-attachment {

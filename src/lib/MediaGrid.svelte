@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getBlobContext } from "$lib/blobs";
   import type { MediaAttachment } from "$lib/types";
-  import { isImage, isVideo, formatSize } from "$lib/utils";
+  import { isImage, isVideo, isAudio, formatSize } from "$lib/utils";
 
   let {
     media,
@@ -37,6 +37,17 @@
           <video src={url} controls class="media-video">
             <track kind="captions" />
           </video>
+        {:catch}
+          <div class="media-placeholder">Failed to load</div>
+        {/await}
+      {:else if isAudio(att.mime_type)}
+        {#await getBlobUrl(att)}
+          <div class="media-placeholder">Loading...</div>
+        {:then url}
+          <div class="media-audio">
+            <span class="audio-filename">{att.filename}</span>
+            <audio src={url} controls preload="metadata"></audio>
+          </div>
         {:catch}
           <div class="media-placeholder">Failed to load</div>
         {/await}
@@ -84,6 +95,30 @@
     width: 100%;
     border-radius: 8px;
     max-height: 400px;
+  }
+
+  .media-audio {
+    background: #0f0f23;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .audio-filename {
+    color: #c4b5fd;
+    font-size: 0.8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .media-audio audio {
+    width: 100%;
+    height: 36px;
+    border-radius: 4px;
   }
 
   .media-placeholder {
