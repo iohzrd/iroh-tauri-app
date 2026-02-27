@@ -69,6 +69,57 @@ npm run tauri build
 
 Produces a native desktop application in `src-tauri/target/release/`.
 
+## Android
+
+### Prerequisites
+
+1. Install [Android Studio](https://developer.android.com/studio)
+2. Install the Android SDK (API level 33+) and NDK via Android Studio's SDK Manager
+3. Install the Android Rust targets:
+   ```bash
+   rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+   ```
+4. Set environment variables (add to your shell profile):
+   ```bash
+   export ANDROID_HOME="$HOME/Android/Sdk"
+   export NDK_HOME="$ANDROID_HOME/ndk/<version>"
+   ```
+
+### Development
+
+Run on a connected device or emulator:
+
+```bash
+npm run tauri android dev
+```
+
+To view logs:
+
+```bash
+adb logcat -s iroh-tauri-app
+```
+
+Use a broader filter if needed (the tag may vary):
+
+```bash
+adb logcat | grep -i iroh
+```
+
+### Building
+
+```bash
+npm run tauri android build
+```
+
+The APK/AAB is output to `src-tauri/gen/android/app/build/outputs/`.
+
+### Notes
+
+- The app uses `tauri-plugin-log` which routes to Android logcat automatically
+- Network change detection does not work natively on Android with iroh -- the app polls `endpoint.network_change()` every 30 seconds to keep connectivity alive
+- QR code scanning uses `tauri-plugin-barcode-scanner` which requires the CAMERA permission (declared in the manifest)
+- Deep links use the `iroh-social://` scheme
+
 ## Community Server (Planned)
 
 A self-hosted, headless server binary that adds opt-in aggregation, discovery, full-text search, and trending to the P2P network. Users register with a server by signing a cryptographic proof of identity. The server subscribes to their gossip topics and indexes their posts in SQLite with FTS5, exposing an HTTP API for search, trending hashtags, user directory, and aggregated feeds.
