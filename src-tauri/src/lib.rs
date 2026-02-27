@@ -53,19 +53,21 @@ async fn save_my_profile(
     bio: String,
     avatar_hash: Option<String>,
     avatar_ticket: Option<String>,
+    is_private: bool,
 ) -> Result<(), String> {
     let profile = Profile {
         display_name: display_name.clone(),
         bio: bio.clone(),
         avatar_hash,
         avatar_ticket,
+        is_private,
     };
     validate_profile(&profile)?;
     state
         .storage
         .save_profile(&profile)
         .map_err(|e| e.to_string())?;
-    log::info!("[profile] saved profile: {display_name}");
+    log::info!("[profile] saved profile: {display_name} (private={is_private})");
     let feed = state.feed.lock().await;
     feed.broadcast_profile(&profile)
         .await

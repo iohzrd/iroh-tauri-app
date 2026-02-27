@@ -346,6 +346,9 @@
     />
     <div class="profile-info">
       <h2>{displayName}</h2>
+      {#if profile?.is_private}
+        <span class="private-badge">Private profile</span>
+      {/if}
       {#if profile?.bio}
         <p class="bio">{profile.bio}</p>
       {/if}
@@ -540,6 +543,16 @@
     margin: 0.25rem 0 0;
     color: #888;
     font-size: 0.85rem;
+  }
+
+  .private-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    color: #f59e0b;
+    border: 1px solid #f59e0b40;
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+    margin-top: 0.25rem;
   }
 
   .id-row {

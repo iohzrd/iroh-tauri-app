@@ -1,6 +1,6 @@
 {
   "name": "iroh-tauri-app",
-  "version": "0.1.33",
+  "version": "0.1.35",
   "description": "",
   "type": "module",
   "scripts": {

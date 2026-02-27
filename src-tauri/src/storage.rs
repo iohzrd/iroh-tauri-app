@@ -70,6 +70,10 @@ impl Storage {
             "011_mentions",
             include_str!("../migrations/011_mentions.sql"),
         ),
+        (
+            "012_private_profile",
+            include_str!("../migrations/012_private_profile.sql"),
+        ),
     ];
 
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
@@ -113,10 +117,10 @@ impl Storage {
     pub fn save_profile(&self, profile: &Profile) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
         db.execute(
-            "INSERT INTO profile (key, display_name, bio, avatar_hash, avatar_ticket)
-             VALUES ('self', ?1, ?2, ?3, ?4)
-             ON CONFLICT(key) DO UPDATE SET display_name=?1, bio=?2, avatar_hash=?3, avatar_ticket=?4",
-            params![profile.display_name, profile.bio, profile.avatar_hash, profile.avatar_ticket],
+            "INSERT INTO profile (key, display_name, bio, avatar_hash, avatar_ticket, is_private)
+             VALUES ('self', ?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(key) DO UPDATE SET display_name=?1, bio=?2, avatar_hash=?3, avatar_ticket=?4, is_private=?5",
+            params![profile.display_name, profile.bio, profile.avatar_hash, profile.avatar_ticket, profile.is_private as i32],
         )?;
         Ok(())
     }
@@ -124,7 +128,7 @@ impl Storage {
     pub fn get_profile(&self) -> anyhow::Result<Option<Profile>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare(
-            "SELECT display_name, bio, avatar_hash, avatar_ticket FROM profile WHERE key='self'",
+            "SELECT display_name, bio, avatar_hash, avatar_ticket, is_private FROM profile WHERE key='self'",
         )?;
         let mut rows = stmt.query([])?;
         match rows.next()? {
@@ -133,6 +137,7 @@ impl Storage {
                 bio: row.get(1)?,
                 avatar_hash: row.get(2)?,
                 avatar_ticket: row.get(3)?,
+                is_private: row.get::<_, i32>(4)? != 0,
             })),
             None => Ok(None),
         }
@@ -701,15 +706,16 @@ impl Storage {
     pub fn save_remote_profile(&self, pubkey: &str, profile: &Profile) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
         db.execute(
-            "INSERT INTO remote_profiles (pubkey, display_name, bio, avatar_hash, avatar_ticket)
-             VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(pubkey) DO UPDATE SET display_name=?2, bio=?3, avatar_hash=?4, avatar_ticket=?5",
+            "INSERT INTO remote_profiles (pubkey, display_name, bio, avatar_hash, avatar_ticket, is_private)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(pubkey) DO UPDATE SET display_name=?2, bio=?3, avatar_hash=?4, avatar_ticket=?5, is_private=?6",
             params![
                 pubkey,
                 profile.display_name,
                 profile.bio,
                 profile.avatar_hash,
-                profile.avatar_ticket
+                profile.avatar_ticket,
+                profile.is_private as i32,
             ],
         )?;
         Ok(())
@@ -718,7 +724,7 @@ impl Storage {
     pub fn get_remote_profile(&self, pubkey: &str) -> anyhow::Result<Option<Profile>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare(
-            "SELECT display_name, bio, avatar_hash, avatar_ticket FROM remote_profiles WHERE pubkey=?1",
+            "SELECT display_name, bio, avatar_hash, avatar_ticket, is_private FROM remote_profiles WHERE pubkey=?1",
         )?;
         let mut rows = stmt.query(params![pubkey])?;
         match rows.next()? {
@@ -727,9 +733,32 @@ impl Storage {
                 bio: row.get(1)?,
                 avatar_hash: row.get(2)?,
                 avatar_ticket: row.get(3)?,
+                is_private: row.get::<_, i32>(4)? != 0,
             })),
             None => Ok(None),
         }
+    }
+
+    pub fn is_private_profile(&self) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let result: Option<i32> = db
+            .query_row(
+                "SELECT is_private FROM profile WHERE key='self'",
+                [],
+                |row| row.get(0),
+            )
+            .ok();
+        Ok(result.unwrap_or(0) != 0)
+    }
+
+    pub fn is_follower(&self, pubkey: &str) -> anyhow::Result<bool> {
+        let db = self.db.lock().unwrap();
+        let exists: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM followers WHERE pubkey=?1",
+            params![pubkey],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
     }
 
     // -- Follows --

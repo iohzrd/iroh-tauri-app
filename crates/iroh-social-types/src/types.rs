@@ -6,6 +6,7 @@ pub struct Profile {
     pub bio: String,
     pub avatar_hash: Option<String>,
     pub avatar_ticket: Option<String>,
+    pub is_private: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

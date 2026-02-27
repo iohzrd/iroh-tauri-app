@@ -49,10 +49,13 @@
   let savedDisplayName = $state("");
   let savedBio = $state("");
   let savedAvatarHash = $state<string | null>(null);
+  let isPrivate = $state(false);
+  let savedIsPrivate = $state(false);
   let isDirty = $derived(
     displayName !== savedDisplayName ||
       bio !== savedBio ||
-      avatarHash !== savedAvatarHash,
+      avatarHash !== savedAvatarHash ||
+      isPrivate !== savedIsPrivate,
   );
 
   async function copyNodeId() {
@@ -119,9 +122,11 @@
         bio = profile.bio;
         avatarHash = profile.avatar_hash;
         avatarTicket = profile.avatar_ticket;
+        isPrivate = profile.is_private;
         savedDisplayName = profile.display_name;
         savedBio = profile.bio;
         savedAvatarHash = profile.avatar_hash;
+        savedIsPrivate = profile.is_private;
         if (profile.avatar_ticket) {
           await loadAvatarPreview(profile.avatar_ticket);
         }
@@ -176,10 +181,12 @@
         bio,
         avatarHash,
         avatarTicket,
+        isPrivate,
       });
       savedDisplayName = displayName;
       savedBio = bio;
       savedAvatarHash = avatarHash;
+      savedIsPrivate = isPrivate;
       status = "Saved!";
       setTimeout(() => (status = ""), 2000);
     } catch (e) {
@@ -321,6 +328,22 @@
         placeholder="Tell the world about yourself..."
         rows="3"
       ></textarea>
+    </div>
+
+    <div class="field">
+      <span class="label">Privacy</span>
+      <label class="toggle-row">
+        <span class="toggle-switch" class:on={isPrivate}>
+          <input type="checkbox" bind:checked={isPrivate} />
+          <span class="toggle-track">
+            <span class="toggle-thumb"></span>
+          </span>
+        </span>
+        <span class="toggle-text">Private profile</span>
+      </label>
+      <p class="field-hint">
+        When enabled, only followers can sync your posts and profile.
+      </p>
     </div>
 
     <button class="save-btn" onclick={save} disabled={saving || !isDirty}>
@@ -535,7 +558,7 @@
     background: #f8717120;
   }
 
-  input,
+  input:not([type="checkbox"]),
   textarea {
     width: 100%;
     background: #0f0f23;
@@ -549,10 +572,72 @@
     resize: vertical;
   }
 
-  input:focus,
+  input:not([type="checkbox"]):focus,
   textarea:focus {
     outline: none;
     border-color: #a78bfa;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+  }
+
+  .toggle-switch {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-track {
+    display: block;
+    width: 40px;
+    height: 22px;
+    background: #2a2a4a;
+    border-radius: 11px;
+    transition: background 0.2s;
+  }
+
+  .toggle-switch.on .toggle-track {
+    background: #7c3aed;
+  }
+
+  .toggle-thumb {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: #888;
+    border-radius: 50%;
+    position: relative;
+    top: 3px;
+    left: 3px;
+    transition:
+      transform 0.2s,
+      background 0.2s;
+  }
+
+  .toggle-switch.on .toggle-thumb {
+    transform: translateX(18px);
+    background: #fff;
+  }
+
+  .toggle-text {
+    font-size: 0.9rem;
+    color: #e0e0e0;
+  }
+
+  .field-hint {
+    margin: 0.25rem 0 0;
+    font-size: 0.75rem;
+    color: #666;
   }
 
   .save-btn {

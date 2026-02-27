@@ -33,6 +33,7 @@ export interface Profile {
   bio: string;
   avatar_hash: string | null;
   avatar_ticket: string | null;
+  is_private: boolean;
 }
 
 export interface FollowEntry {

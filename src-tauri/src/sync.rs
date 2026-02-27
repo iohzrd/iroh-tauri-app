@@ -71,6 +71,17 @@ impl ProtocolHandler for SyncHandler {
             return Err(AcceptError::from_err(std::io::Error::other("blocked")));
         }
 
+        // Reject non-followers when profile is private
+        if self.storage.is_private_profile().unwrap_or(false)
+            && !self.storage.is_follower(&remote_str).unwrap_or(false)
+        {
+            log::warn!(
+                "[sync-server] rejecting non-follower {} (private profile)",
+                short_id(&remote_str)
+            );
+            return Err(AcceptError::from_err(std::io::Error::other("private")));
+        }
+
         let (mut send, mut recv) = conn.accept_bi().await?;
 
         // Read Phase 1 request
