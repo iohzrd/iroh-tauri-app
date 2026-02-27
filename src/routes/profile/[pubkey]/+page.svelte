@@ -592,7 +592,9 @@
         onclick={toggleFollow}
         disabled={toggling || isBlocked}
       >
-        {toggling ? "..." : isFollowing ? "Unfollow" : "Follow"}
+        {#if toggling}<span class="btn-spinner"></span>{:else}{isFollowing
+            ? "Unfollow"
+            : "Follow"}{/if}
       </button>
       <a href="/messages/{pubkey}" class="message-btn">Message</a>
     </div>
@@ -603,7 +605,9 @@
         onclick={toggleMute}
         disabled={togglingMute}
       >
-        {togglingMute ? "..." : isMuted ? "Unmute" : "Mute"}
+        {#if togglingMute}<span class="btn-spinner"></span>{:else}{isMuted
+            ? "Unmute"
+            : "Mute"}{/if}
       </button>
       <button
         class="mod-btn block"
@@ -611,7 +615,9 @@
         onclick={toggleBlock}
         disabled={togglingBlock}
       >
-        {togglingBlock ? "..." : isBlocked ? "Unblock" : "Block"}
+        {#if togglingBlock}<span class="btn-spinner"></span>{:else}{isBlocked
+            ? "Unblock"
+            : "Block"}{/if}
       </button>
     </div>
   {/if}
@@ -826,6 +832,10 @@
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.2rem;
   }
 
   .message-btn {
@@ -881,6 +891,10 @@
     font-weight: 500;
     cursor: pointer;
     font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.8rem;
     transition:
       color 0.15s,
       background 0.15s,

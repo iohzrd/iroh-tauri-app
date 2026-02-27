@@ -407,7 +407,7 @@
     animation: spin 0.8s linear infinite;
   }
 
-  @keyframes spin {
+  @keyframes -global-spin {
     to {
       transform: rotate(360deg);
     }
@@ -422,6 +422,11 @@
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     vertical-align: middle;
+  }
+
+  :global(button .btn-spinner) {
+    border-color: #ffffff40;
+    border-top-color: #fff;
   }
 
   :global(.sentinel) {

@@ -21,6 +21,7 @@
   let newPubkey = $state("");
   let loading = $state(true);
   let status = $state("");
+  let addingFollow = $state(false);
   let copyFeedback = $state("");
   let pendingUnfollowPubkey = $state<string | null>(null);
   let activeTab = $state<"following" | "followers">("following");
@@ -103,7 +104,8 @@
   async function followUser() {
     const pubkey = newPubkey.trim();
     if (!pubkey) return;
-    status = "Following...";
+    addingFollow = true;
+    status = "";
     try {
       await invoke("follow_user", { pubkey });
       newPubkey = "";
@@ -114,6 +116,7 @@
     } catch (e) {
       status = `Error: ${e}`;
     }
+    addingFollow = false;
   }
 
   function confirmUnfollow(pubkey: string) {
@@ -221,7 +224,17 @@
           >Scan</button
         >
       {/if}
-      <button onclick={followUser} disabled={!newPubkey.trim()}>Follow</button>
+      <button
+        class="follow-btn"
+        onclick={followUser}
+        disabled={!newPubkey.trim() || addingFollow}
+      >
+        {#if addingFollow}
+          <span class="btn-spinner"></span>
+        {:else}
+          Follow
+        {/if}
+      </button>
     </div>
 
     {#if showScanner}
@@ -526,6 +539,13 @@
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+  }
+
+  .follow-btn {
+    min-width: 72px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .add-follow button:hover:not(:disabled) {
