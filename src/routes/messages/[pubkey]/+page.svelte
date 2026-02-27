@@ -2,6 +2,7 @@
   import { page } from "$app/state";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { platform } from "@tauri-apps/plugin-os";
   import { onMount } from "svelte";
   import Avatar from "$lib/Avatar.svelte";
   import type { StoredMessage, Profile, PendingAttachment } from "$lib/types";
@@ -14,7 +15,9 @@
     formatSize,
   } from "$lib/utils";
   import { createBlobCache } from "$lib/blobs";
+  import { hapticNotification } from "$lib/haptics";
 
+  const isMobile = platform() === "android" || platform() === "ios";
   let pubkey: string = $derived(page.params.pubkey ?? "");
   let nodeId = $state("");
   let peerName = $state("");
@@ -34,6 +37,13 @@
   let attachments = $state<PendingAttachment[]>([]);
   let uploading = $state(false);
   let fileInput = $state<HTMLInputElement>(null!);
+  let cameraInput = $state<HTMLInputElement>(null!);
+
+  // Message delivery tracking
+  const sendTimestamps = new Map<string, number>();
+  let failedIds = $state(new Set<string>());
+  let retryingIds = $state(new Set<string>());
+  const SEND_TIMEOUT_MS = 30_000;
 
   const blobs = createBlobCache();
 
@@ -197,6 +207,8 @@
         media,
       });
       messages = [...messages, msg];
+      sendTimestamps.set(msg.id, Date.now());
+      hapticNotification("success");
       messageText = "";
       for (const a of attachments) URL.revokeObjectURL(a.previewUrl);
       attachments = [];
@@ -207,6 +219,21 @@
       setTimeout(() => (sendError = ""), 5000);
     }
     sending = false;
+  }
+
+  async function retryMessage(msgId: string) {
+    retryingIds.add(msgId);
+    retryingIds = new Set(retryingIds);
+    failedIds.delete(msgId);
+    failedIds = new Set(failedIds);
+    sendTimestamps.set(msgId, Date.now());
+    try {
+      await invoke("flush_dm_outbox");
+    } catch (e) {
+      console.error("Retry failed:", e);
+    }
+    retryingIds.delete(msgId);
+    retryingIds = new Set(retryingIds);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -252,6 +279,31 @@
     return !isSameDay(messages[index].timestamp, messages[index - 1].timestamp);
   }
 
+  // Check for timed-out messages every 5s
+  $effect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      let changed = false;
+      for (const [msgId, sentAt] of sendTimestamps) {
+        const msg = messages.find((m) => m.id === msgId);
+        if (!msg || msg.delivered || msg.read) {
+          sendTimestamps.delete(msgId);
+          failedIds.delete(msgId);
+          changed = true;
+          continue;
+        }
+        if (now - sentAt > SEND_TIMEOUT_MS && !retryingIds.has(msgId)) {
+          failedIds.add(msgId);
+          changed = true;
+        }
+      }
+      if (changed) {
+        failedIds = new Set(failedIds);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  });
+
   onMount(() => {
     init();
     const unlisteners: Promise<UnlistenFn>[] = [];
@@ -282,6 +334,11 @@
         messages = messages.map((m) =>
           m.id === payload.message_id ? { ...m, delivered: true } : m,
         );
+        sendTimestamps.delete(payload.message_id);
+        failedIds.delete(payload.message_id);
+        retryingIds.delete(payload.message_id);
+        failedIds = new Set(failedIds);
+        retryingIds = new Set(retryingIds);
       }),
     );
     unlisteners.push(
@@ -318,6 +375,14 @@
   multiple
   class="hidden-file-input"
   bind:this={fileInput}
+  onchange={handleFiles}
+/>
+<input
+  type="file"
+  accept="image/*,video/*"
+  capture="environment"
+  class="hidden-file-input"
+  bind:this={cameraInput}
   onchange={handleFiles}
 />
 
@@ -362,6 +427,7 @@
           class="message-row"
           class:sent={msg.from_pubkey === nodeId}
           class:received={msg.from_pubkey !== nodeId}
+          class:failed-msg={msg.from_pubkey === nodeId && failedIds.has(msg.id)}
         >
           <div class="message-bubble">
             {#if msg.media && msg.media.length > 0}
@@ -405,6 +471,16 @@
                   <span class="delivery-status delivered" title="Delivered"
                     >Delivered</span
                   >
+                {:else if failedIds.has(msg.id)}
+                  <button
+                    class="delivery-status failed"
+                    onclick={() => retryMessage(msg.id)}
+                    title="Tap to retry"
+                  >
+                    Failed -- Tap to retry
+                  </button>
+                {:else if retryingIds.has(msg.id)}
+                  <span class="delivery-status retrying">Retrying...</span>
                 {:else}
                   <span class="delivery-status pending" title="Sending..."
                     >Sending</span
@@ -454,6 +530,16 @@
     {/if}
 
     <div class="compose-bar">
+      {#if isMobile}
+        <button
+          class="attach-btn"
+          onclick={() => cameraInput?.click()}
+          disabled={uploading}
+          title="Take photo"
+        >
+          {uploading ? "..." : "Cam"}
+        </button>
+      {/if}
       <button
         class="attach-btn"
         onclick={() => fileInput?.click()}
@@ -685,6 +771,26 @@
 
   .sent .delivery-status.read {
     color: #60a5fa;
+  }
+
+  .failed-msg .message-bubble {
+    border: 1px solid #7f1d1d;
+  }
+
+  .delivery-status.failed {
+    background: none;
+    border: none;
+    color: #f87171;
+    font-size: 0.6rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+  }
+
+  .delivery-status.retrying {
+    color: #f59e0b;
   }
 
   .typing-indicator {

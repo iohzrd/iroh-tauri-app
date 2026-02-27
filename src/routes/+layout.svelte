@@ -191,6 +191,12 @@
       </span>
     {/if}
   </nav>
+  {#if status && !status.has_relay}
+    <div class="relay-banner">
+      <span class="relay-banner-dot"></span>
+      <span>Relay disconnected -- messages and sync may not work</span>
+    </div>
+  {/if}
   <main>
     {@render children()}
   </main>
@@ -293,6 +299,37 @@
   .status-dot.disconnected {
     background: #ef4444;
     box-shadow: 0 0 4px #ef444480;
+  }
+
+  .relay-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #7f1d1d;
+    border-bottom: 1px solid #991b1b;
+    color: #fca5a5;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  .relay-banner-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+    flex-shrink: 0;
+    animation: pulse-dot 2s infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
   }
 
   main {

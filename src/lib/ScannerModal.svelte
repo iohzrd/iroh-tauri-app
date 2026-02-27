@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { hapticNotification } from "$lib/haptics";
 
   interface Props {
     onscanned: (nodeId: string) => void;
@@ -27,6 +28,7 @@
   function handleScanResult(text: string) {
     const nodeId = parseNodeIdFromUrl(text);
     if (nodeId) {
+      hapticNotification("success");
       onscanned(nodeId);
     } else {
       error = `Not an invite link: ${text}`;

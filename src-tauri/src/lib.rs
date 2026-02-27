@@ -1098,7 +1098,9 @@ pub fn run() {
     // Mobile-only plugins
     #[cfg(mobile)]
     {
-        builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+        builder = builder
+            .plugin(tauri_plugin_barcode_scanner::init())
+            .plugin(tauri_plugin_haptics::init());
     }
 
     builder

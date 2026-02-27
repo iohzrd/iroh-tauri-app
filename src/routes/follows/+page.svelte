@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
   import Avatar from "$lib/Avatar.svelte";
   import ScannerModal from "$lib/ScannerModal.svelte";
+  import { hapticImpact } from "$lib/haptics";
   import type { FollowEntry, FollowerEntry } from "$lib/types";
   import {
     shortId,
@@ -107,6 +108,7 @@
       await invoke("follow_user", { pubkey });
       newPubkey = "";
       await loadFollows();
+      hapticImpact("light");
       status = "Followed!";
       setTimeout(() => (status = ""), 2000);
     } catch (e) {
@@ -123,6 +125,7 @@
     try {
       await invoke("unfollow_user", { pubkey: pendingUnfollowPubkey });
       await loadFollows();
+      hapticImpact("light");
     } catch (e) {
       status = `Error: ${e}`;
     }

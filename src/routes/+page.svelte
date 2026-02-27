@@ -7,7 +7,9 @@
   import PostCard from "$lib/PostCard.svelte";
   import ReplyComposer from "$lib/ReplyComposer.svelte";
   import QuoteComposer from "$lib/QuoteComposer.svelte";
+  import { platform } from "@tauri-apps/plugin-os";
   import { createBlobCache, setBlobContext } from "$lib/blobs";
+  import { hapticImpact } from "$lib/haptics";
   import type { Post, PendingAttachment } from "$lib/types";
   import {
     shortId,
@@ -20,6 +22,7 @@
   } from "$lib/utils";
 
   const MAX_POST_LENGTH = 10_000;
+  const isMobile = platform() === "android" || platform() === "ios";
 
   let nodeId = $state("");
   let loading = $state(true);
@@ -30,6 +33,7 @@
   let attachments = $state<PendingAttachment[]>([]);
   let uploading = $state(false);
   let fileInput = $state<HTMLInputElement>(null!);
+  let cameraInput = $state<HTMLInputElement>(null!);
   let copyFeedback = $state("");
   let pendingDeleteId = $state<string | null>(null);
   let showScrollTop = $state(false);
@@ -42,6 +46,15 @@
   let lightboxSrc = $state("");
   let lightboxAlt = $state("");
   let sentinel = $state<HTMLDivElement>(null!);
+  let syncFailures = $state<string[]>([]);
+  let showSyncDetails = $state(false);
+
+  // Pull-to-refresh
+  let pullStartY = 0;
+  let pullDistance = $state(0);
+  let isPulling = $state(false);
+  let pullTriggered = $state(false);
+  const PULL_THRESHOLD = 80;
 
   const blobs = createBlobCache();
   setBlobContext(blobs);
@@ -113,15 +126,25 @@
 
   async function syncAll() {
     syncing = true;
+    syncFailures = [];
     try {
       const follows: { pubkey: string }[] = await invoke("get_follows");
       const results = await Promise.allSettled(
-        follows.map((f) => invoke("sync_posts", { pubkey: f.pubkey })),
+        follows.map(async (f) => {
+          await invoke("sync_posts", { pubkey: f.pubkey });
+          return f.pubkey;
+        }),
       );
-      const failures = results.filter((r) => r.status === "rejected").length;
-      if (failures > 0 && failures < follows.length) {
-        showToast(`Synced, but ${failures} peer(s) unreachable`);
-      } else if (failures > 0 && failures === follows.length) {
+      const failed: string[] = [];
+      for (let i = 0; i < results.length; i++) {
+        if (results[i].status === "rejected") {
+          failed.push(follows[i].pubkey);
+        }
+      }
+      syncFailures = failed;
+      if (failed.length > 0 && failed.length < follows.length) {
+        showToast(`Synced, but ${failed.length} peer(s) unreachable`);
+      } else if (failed.length > 0 && failed.length === follows.length) {
         showToast("Could not reach any peers");
       }
       await loadFeed();
@@ -243,6 +266,35 @@
     showScrollTop = window.scrollY > 400;
   }
 
+  function handleTouchStart(e: TouchEvent) {
+    if (window.scrollY === 0 && !syncing) {
+      pullStartY = e.touches[0].clientY;
+      isPulling = true;
+    }
+  }
+
+  function handleTouchMove(e: TouchEvent) {
+    if (!isPulling) return;
+    const delta = e.touches[0].clientY - pullStartY;
+    if (delta > 0) {
+      pullDistance = Math.min(delta * 0.5, 120);
+      pullTriggered = pullDistance >= PULL_THRESHOLD;
+    } else {
+      pullDistance = 0;
+      isPulling = false;
+    }
+  }
+
+  async function handleTouchEnd() {
+    if (isPulling && pullTriggered && !syncing) {
+      hapticImpact("medium");
+      await syncAll();
+    }
+    pullDistance = 0;
+    isPulling = false;
+    pullTriggered = false;
+  }
+
   // Visibility-aware auto-sync
   let syncInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -323,161 +375,230 @@
     <p>Starting node...</p>
   </div>
 {:else}
-  <div class="node-id">
-    <span class="label">You</span>
-    <code>{shortId(nodeId)}</code>
-    <button
-      class="copy-btn"
-      onclick={() => copyWithFeedback(nodeId, "node-id")}
-    >
-      {copyFeedback === "node-id" ? "Copied!" : "Copy ID"}
-    </button>
-  </div>
-
-  <div class="compose">
-    <textarea
-      bind:value={newPost}
-      placeholder="What's on your mind?"
-      rows="3"
-      maxlength={MAX_POST_LENGTH}
-      onkeydown={handleKey}
-    ></textarea>
-    <div class="compose-meta">
-      <span class="hint">Shift+Enter for newline</span>
-      <span
-        class="char-count"
-        class:warn={newPost.length > MAX_POST_LENGTH * 0.9}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    ontouchstart={handleTouchStart}
+    ontouchmove={handleTouchMove}
+    ontouchend={handleTouchEnd}
+    style="transform: translateY({pullDistance}px); transition: {isPulling
+      ? 'none'
+      : 'transform 0.3s ease-out'};"
+  >
+    {#if pullDistance > 0}
+      <div class="pull-indicator" style="height: {pullDistance}px;">
+        <div
+          class="pull-arrow"
+          class:ready={pullTriggered}
+          style="transform: rotate({pullDistance * 3}deg);"
+        >
+          &#8635;
+        </div>
+        <span class="pull-text">
+          {pullTriggered ? "Release to refresh" : "Pull to refresh"}
+        </span>
+      </div>
+    {/if}
+    <div class="node-id">
+      <span class="label">You</span>
+      <code>{shortId(nodeId)}</code>
+      <button
+        class="copy-btn"
+        onclick={() => copyWithFeedback(nodeId, "node-id")}
       >
-        {newPost.length}/{MAX_POST_LENGTH}
-      </span>
+        {copyFeedback === "node-id" ? "Copied!" : "Copy ID"}
+      </button>
     </div>
 
-    {#if attachments.length > 0}
-      <div class="attachment-previews">
-        {#each attachments as att, i}
-          <div class="attachment-preview">
-            {#if isImage(att.mime_type)}
-              <img src={att.previewUrl} alt={att.filename} />
-            {:else if isVideo(att.mime_type)}
-              <video src={att.previewUrl} muted></video>
-            {:else}
-              <div class="file-icon">{att.filename}</div>
-            {/if}
-            <button class="remove-btn" onclick={() => removeAttachment(i)}
-              >&times;</button
+    <div class="compose">
+      <textarea
+        bind:value={newPost}
+        placeholder="What's on your mind?"
+        rows="3"
+        maxlength={MAX_POST_LENGTH}
+        onkeydown={handleKey}
+      ></textarea>
+      <div class="compose-meta">
+        <span class="hint">Shift+Enter for newline</span>
+        <span
+          class="char-count"
+          class:warn={newPost.length > MAX_POST_LENGTH * 0.9}
+        >
+          {newPost.length}/{MAX_POST_LENGTH}
+        </span>
+      </div>
+
+      {#if attachments.length > 0}
+        <div class="attachment-previews">
+          {#each attachments as att, i}
+            <div class="attachment-preview">
+              {#if isImage(att.mime_type)}
+                <img src={att.previewUrl} alt={att.filename} />
+              {:else if isVideo(att.mime_type)}
+                <video src={att.previewUrl} muted></video>
+              {:else}
+                <div class="file-icon">{att.filename}</div>
+              {/if}
+              <button class="remove-btn" onclick={() => removeAttachment(i)}
+                >&times;</button
+              >
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <div class="compose-actions">
+        {#if isMobile}
+          <button
+            class="attach-btn"
+            onclick={() => cameraInput.click()}
+            disabled={uploading}
+          >
+            {uploading ? "..." : "Camera"}
+          </button>
+          <button
+            class="attach-btn"
+            onclick={() => fileInput.click()}
+            disabled={uploading}
+          >
+            {uploading ? "..." : "Gallery"}
+          </button>
+        {:else}
+          <button
+            class="attach-btn"
+            onclick={() => fileInput.click()}
+            disabled={uploading}
+          >
+            {uploading ? "Uploading..." : "Attach"}
+          </button>
+        {/if}
+        <input
+          bind:this={cameraInput}
+          type="file"
+          accept="image/*,video/*"
+          capture="environment"
+          onchange={handleFiles}
+          hidden
+        />
+        <input
+          bind:this={fileInput}
+          type="file"
+          multiple
+          accept="image/*,video/*,audio/*,.pdf,.txt"
+          onchange={handleFiles}
+          hidden
+        />
+        <button
+          class="post-btn"
+          onclick={submitPost}
+          disabled={posting || (!newPost.trim() && attachments.length === 0)}
+        >
+          {posting ? "Posting..." : "Post"}
+        </button>
+      </div>
+    </div>
+
+    {#if pendingDeleteId}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div class="modal-overlay" onclick={cancelDelete} role="presentation">
+        <!-- svelte-ignore a11y_interactive_supports_focus -->
+        <div
+          class="modal"
+          onclick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-label="Confirm delete"
+        >
+          <p>Delete this post? This cannot be undone.</p>
+          <div class="modal-actions">
+            <button class="modal-cancel" onclick={cancelDelete}>Cancel</button>
+            <button class="modal-confirm" onclick={executeDelete}>Delete</button
             >
           </div>
-        {/each}
-      </div>
-    {/if}
-
-    <div class="compose-actions">
-      <button
-        class="attach-btn"
-        onclick={() => fileInput.click()}
-        disabled={uploading}
-      >
-        {uploading ? "Uploading..." : "Attach"}
-      </button>
-      <input
-        bind:this={fileInput}
-        type="file"
-        multiple
-        accept="image/*,video/*,audio/*,.pdf,.txt"
-        onchange={handleFiles}
-        hidden
-      />
-      <button
-        class="post-btn"
-        onclick={submitPost}
-        disabled={posting || (!newPost.trim() && attachments.length === 0)}
-      >
-        {posting ? "Posting..." : "Post"}
-      </button>
-    </div>
-  </div>
-
-  {#if pendingDeleteId}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="modal-overlay" onclick={cancelDelete} role="presentation">
-      <!-- svelte-ignore a11y_interactive_supports_focus -->
-      <div
-        class="modal"
-        onclick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Confirm delete"
-      >
-        <p>Delete this post? This cannot be undone.</p>
-        <div class="modal-actions">
-          <button class="modal-cancel" onclick={cancelDelete}>Cancel</button>
-          <button class="modal-confirm" onclick={executeDelete}>Delete</button>
         </div>
       </div>
-    </div>
-  {/if}
-
-  <div class="feed">
-    {#each posts as post (post.id)}
-      <PostCard
-        {post}
-        {nodeId}
-        showDelete={true}
-        onreply={(p) => {
-          replyingTo = replyingTo?.id === p.id ? null : p;
-          quotingPost = null;
-        }}
-        ondelete={confirmDelete}
-        onquote={(p) => {
-          quotingPost = quotingPost?.id === p.id ? null : p;
-          replyingTo = null;
-        }}
-        onlightbox={(src, alt) => {
-          lightboxSrc = src;
-          lightboxAlt = alt;
-        }}
-      />
-      {#if replyingTo?.id === post.id}
-        <ReplyComposer
-          replyToId={post.id}
-          replyToAuthor={post.author}
-          onsubmitted={() => {
-            replyingTo = null;
-            loadFeed();
-          }}
-          oncancel={() => (replyingTo = null)}
-        />
-      {/if}
-      {#if quotingPost?.id === post.id}
-        <QuoteComposer
-          quotedPost={post}
-          {nodeId}
-          onsubmitted={() => {
-            quotingPost = null;
-            loadFeed();
-          }}
-          oncancel={() => (quotingPost = null)}
-        />
-      {/if}
-    {:else}
-      <p class="empty">No posts yet. Write something or follow someone!</p>
-    {/each}
-  </div>
-
-  {#if hasMore && posts.length > 0}
-    <div bind:this={sentinel} class="sentinel">
-      {#if loadingMore}
-        <span class="btn-spinner"></span> Loading...
-      {/if}
-    </div>
-  {/if}
-
-  <button class="refresh" onclick={syncAll} disabled={syncing}>
-    {#if syncing}
-      <span class="btn-spinner"></span> Syncing...
-    {:else}
-      Refresh
     {/if}
-  </button>
+
+    <div class="feed">
+      {#each posts as post (post.id)}
+        <PostCard
+          {post}
+          {nodeId}
+          showDelete={true}
+          onreply={(p) => {
+            replyingTo = replyingTo?.id === p.id ? null : p;
+            quotingPost = null;
+          }}
+          ondelete={confirmDelete}
+          onquote={(p) => {
+            quotingPost = quotingPost?.id === p.id ? null : p;
+            replyingTo = null;
+          }}
+          onlightbox={(src, alt) => {
+            lightboxSrc = src;
+            lightboxAlt = alt;
+          }}
+        />
+        {#if replyingTo?.id === post.id}
+          <ReplyComposer
+            replyToId={post.id}
+            replyToAuthor={post.author}
+            onsubmitted={() => {
+              replyingTo = null;
+              loadFeed();
+            }}
+            oncancel={() => (replyingTo = null)}
+          />
+        {/if}
+        {#if quotingPost?.id === post.id}
+          <QuoteComposer
+            quotedPost={post}
+            {nodeId}
+            onsubmitted={() => {
+              quotingPost = null;
+              loadFeed();
+            }}
+            oncancel={() => (quotingPost = null)}
+          />
+        {/if}
+      {:else}
+        <p class="empty">No posts yet. Write something or follow someone!</p>
+      {/each}
+    </div>
+
+    {#if hasMore && posts.length > 0}
+      <div bind:this={sentinel} class="sentinel">
+        {#if loadingMore}
+          <span class="btn-spinner"></span> Loading...
+        {/if}
+      </div>
+    {/if}
+
+    <button class="refresh" onclick={syncAll} disabled={syncing}>
+      {#if syncing}
+        <span class="btn-spinner"></span> Syncing...
+      {:else}
+        Refresh
+      {/if}
+    </button>
+
+    {#if syncFailures.length > 0}
+      <div class="sync-failures">
+        <button
+          class="sync-failures-toggle"
+          onclick={() => (showSyncDetails = !showSyncDetails)}
+        >
+          {syncFailures.length} peer(s) unreachable
+          <span class="toggle-arrow">{showSyncDetails ? "v" : ">"}</span>
+        </button>
+        {#if showSyncDetails}
+          <ul class="sync-failures-list">
+            {#each syncFailures as peer}
+              <li><code>{shortId(peer)}</code></li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
+  </div>
 {/if}
 
 {#if toastMessage}
@@ -764,5 +885,77 @@
     to {
       opacity: 1;
     }
+  }
+
+  .sync-failures {
+    margin: 0.5rem 0;
+    border: 1px solid #7f1d1d;
+    border-radius: 8px;
+    background: #1a0a0a;
+    overflow: hidden;
+  }
+
+  .sync-failures-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: none;
+    border: none;
+    color: #fca5a5;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .sync-failures-toggle:hover {
+    background: #2a0a0a;
+  }
+
+  .toggle-arrow {
+    font-size: 0.7rem;
+    color: #888;
+  }
+
+  .sync-failures-list {
+    list-style: none;
+    padding: 0 0.75rem 0.5rem;
+    margin: 0;
+  }
+
+  .sync-failures-list li {
+    font-size: 0.75rem;
+    color: #888;
+    padding: 0.15rem 0;
+  }
+
+  .sync-failures-list code {
+    color: #f87171;
+  }
+
+  .pull-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 0.5rem;
+    overflow: hidden;
+    color: #888;
+    font-size: 0.8rem;
+  }
+
+  .pull-arrow {
+    font-size: 1.5rem;
+    color: #555;
+    transition: color 0.15s;
+  }
+
+  .pull-arrow.ready {
+    color: #a78bfa;
+  }
+
+  .pull-text {
+    margin-top: 0.25rem;
   }
 </style>
