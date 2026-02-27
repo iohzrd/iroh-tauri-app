@@ -22,7 +22,8 @@
   let status = $state<NodeStatus | null>(null);
   let zoomLevel = $state(1.0);
   let unreadDmCount = $state(0);
-  let unreadMentionCount = $state(0);
+  let unreadNotificationCount = $state(0);
+  let nodeId = $state("");
 
   async function applyZoom(level: number) {
     zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
@@ -49,10 +50,10 @@
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== "iroh-social:") return;
-      if (parsed.hostname === "user") {
-        const nodeId = parsed.pathname.slice(1);
-        if (nodeId) {
-          goto(`/user/${nodeId}`);
+      if (parsed.hostname === "profile") {
+        const id = parsed.pathname.slice(1);
+        if (id) {
+          goto(`/profile/${id}`);
         }
       }
     } catch {
@@ -76,9 +77,9 @@
     }
   }
 
-  async function pollUnreadMentions() {
+  async function pollUnreadNotifications() {
     try {
-      unreadMentionCount = await invoke("get_unread_mention_count");
+      unreadNotificationCount = await invoke("get_unread_notification_count");
     } catch {
       // Node not ready yet
     }
@@ -94,12 +95,15 @@
     }
 
     window.addEventListener("keydown", handleZoomKeys);
+    invoke<string>("get_node_id")
+      .then((id) => (nodeId = id))
+      .catch(() => {});
     pollStatus();
     pollUnread();
-    pollUnreadMentions();
+    pollUnreadNotifications();
     const statusInterval = setInterval(pollStatus, 10000);
     const unreadInterval = setInterval(pollUnread, 10000);
-    const mentionInterval = setInterval(pollUnreadMentions, 10000);
+    const notificationInterval = setInterval(pollUnreadNotifications, 10000);
     const unlisteners: Promise<UnlistenFn>[] = [];
 
     async function setupNotifications() {
@@ -139,7 +143,7 @@
       );
       unlisteners.push(
         listen<Post>("mentioned-in-post", async (event) => {
-          pollUnreadMentions();
+          pollUnreadNotifications();
           const isViewingActivity = page.url.pathname === "/activity";
           if (!isViewingActivity && permitted) {
             const post = event.payload;
@@ -160,6 +164,11 @@
               body: post.content.slice(0, 100) || "Mentioned you in a post",
             });
           }
+        }),
+      );
+      unlisteners.push(
+        listen("notification-received", () => {
+          pollUnreadNotifications();
         }),
       );
     }
@@ -186,7 +195,7 @@
       window.removeEventListener("keydown", handleZoomKeys);
       clearInterval(statusInterval);
       clearInterval(unreadInterval);
-      clearInterval(mentionInterval);
+      clearInterval(notificationInterval);
       unlisteners.forEach((p) => p.then((fn) => fn()));
     };
   });
@@ -196,14 +205,17 @@
   <nav>
     <a href="/" class:active={page.url.pathname === "/"}>Feed</a>
     <a href="/activity" class:active={page.url.pathname === "/activity"}>
-      Activity
-      {#if unreadMentionCount > 0}
-        <span class="unread-badge">{unreadMentionCount}</span>
+      Notifications
+      {#if unreadNotificationCount > 0}
+        <span class="unread-badge">{unreadNotificationCount}</span>
       {/if}
     </a>
-    <a href="/profile" class:active={page.url.pathname === "/profile"}
-      >Profile</a
-    >
+    {#if nodeId}
+      <a
+        href="/profile/{nodeId}"
+        class:active={page.url.pathname === `/profile/${nodeId}`}>Profile</a
+      >
+    {/if}
     <a
       href="/messages"
       class:active={page.url.pathname.startsWith("/messages")}
@@ -213,9 +225,6 @@
         <span class="unread-badge">{unreadDmCount}</span>
       {/if}
     </a>
-    <a href="/bookmarks" class:active={page.url.pathname === "/bookmarks"}
-      >Saved</a
-    >
     <a href="/follows" class:active={page.url.pathname === "/follows"}
       >Follows</a
     >

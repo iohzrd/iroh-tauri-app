@@ -64,7 +64,8 @@
 <article class="post">
   {#if isRepostOnly && showAuthor}
     <div class="repost-label">
-      <a href="/user/{post.author}" class="repost-author">{repostAuthor.name}</a
+      <a href="/profile/{post.author}" class="repost-author"
+        >{repostAuthor.name}</a
       >
       <span>reposted</span>
     </div>
@@ -72,7 +73,7 @@
 
   <div class="post-header">
     {#if showAuthor}
-      <a href="/user/{displayPost.author}" class="author-link">
+      <a href="/profile/{displayPost.author}" class="author-link">
         <Avatar
           pubkey={displayPost.author}
           name={author.name}

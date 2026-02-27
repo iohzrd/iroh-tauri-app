@@ -1,6 +1,6 @@
 use iroh_social_types::{
     ConversationMeta, FollowEntry, FollowerEntry, Interaction, InteractionKind, MediaAttachment,
-    Post, Profile, StoredMessage, parse_mentions,
+    Post, Profile, StoredMessage,
 };
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,22 @@ pub struct PostCounts {
     pub reposts: u32,
     pub liked_by_me: bool,
     pub reposted_by_me: bool,
+}
+
+pub struct FeedQuery {
+    pub limit: usize,
+    pub before: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Notification {
+    pub id: String,
+    pub kind: String,
+    pub actor: String,
+    pub target_post_id: Option<String>,
+    pub post_id: Option<String>,
+    pub timestamp: u64,
+    pub read: bool,
 }
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -54,6 +70,10 @@ impl Storage {
         (
             "008_mentions",
             include_str!("../migrations/008_mentions.sql"),
+        ),
+        (
+            "009_notifications",
+            include_str!("../migrations/009_notifications.sql"),
         ),
     ];
 
@@ -146,14 +166,6 @@ impl Storage {
                 post.signature,
             ],
         )?;
-        let mentions = parse_mentions(&post.content);
-        for mentioned in &mentions {
-            db.execute(
-                "INSERT OR IGNORE INTO post_mentions (post_id, mentioned_pubkey, post_author, post_timestamp)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![post.id, mentioned, post.author, post.timestamp as i64],
-            )?;
-        }
         Ok(())
     }
 
@@ -168,40 +180,43 @@ impl Storage {
         }
     }
 
-    pub fn get_feed(&self, limit: usize, before: Option<u64>) -> anyhow::Result<Vec<Post>> {
+    pub fn get_feed(&self, q: &FeedQuery) -> anyhow::Result<Vec<Post>> {
         let db = self.db.lock().unwrap();
-        let hidden = "AND author NOT IN (SELECT pubkey FROM mutes UNION SELECT pubkey FROM blocks)";
+        let hidden =
+            "AND p.author NOT IN (SELECT pubkey FROM mutes UNION SELECT pubkey FROM blocks)";
+
+        let (sql, p): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match q.before {
+            Some(b) => (
+                format!(
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature FROM posts p
+                     WHERE p.timestamp < ?1 {hidden} ORDER BY p.timestamp DESC LIMIT ?2"
+                ),
+                vec![Box::new(b as i64), Box::new(q.limit as i64)],
+            ),
+            None => (
+                format!(
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature FROM posts p
+                     WHERE 1=1 {hidden} ORDER BY p.timestamp DESC LIMIT ?1"
+                ),
+                vec![Box::new(q.limit as i64)],
+            ),
+        };
+        let mut stmt = db.prepare(&sql)?;
+        let p_refs: Vec<&dyn rusqlite::types::ToSql> = p.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt.query_and_then(p_refs.as_slice(), Self::row_to_post)?;
         let mut posts = Vec::new();
-        match before {
-            Some(b) => {
-                let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
-                     WHERE timestamp < ?1 {hidden} ORDER BY timestamp DESC LIMIT ?2"
-                );
-                let mut stmt = db.prepare(&sql)?;
-                let mut rows = stmt.query(params![b as i64, limit as i64])?;
-                while let Some(row) = rows.next()? {
-                    posts.push(Self::row_to_post(row)?);
-                }
-            }
-            None => {
-                let sql = format!(
-                    "SELECT id, author, content, timestamp, media_json, reply_to, reply_to_author, quote_of, quote_of_author, signature FROM posts
-                     WHERE 1=1 {hidden} ORDER BY timestamp DESC LIMIT ?1"
-                );
-                let mut stmt = db.prepare(&sql)?;
-                let mut rows = stmt.query(params![limit as i64])?;
-                while let Some(row) = rows.next()? {
-                    posts.push(Self::row_to_post(row)?);
-                }
-            }
+        for row in rows {
+            posts.push(row?);
         }
         Ok(posts)
     }
 
     pub fn delete_post(&self, id: &str) -> anyhow::Result<bool> {
         let db = self.db.lock().unwrap();
-        db.execute("DELETE FROM post_mentions WHERE post_id=?1", params![id])?;
+        db.execute(
+            "DELETE FROM notifications WHERE post_id=?1 OR target_post_id=?1",
+            params![id],
+        )?;
         let count = db.execute("DELETE FROM posts WHERE id=?1", params![id])?;
         Ok(count > 0)
     }
@@ -1206,102 +1221,97 @@ impl Storage {
         Ok(exists)
     }
 
-    pub fn get_bookmarks(&self, limit: usize, before: Option<u64>) -> anyhow::Result<Vec<Post>> {
+    // -- Notifications --
+
+    pub fn insert_notification(
+        &self,
+        kind: &str,
+        actor: &str,
+        target_post_id: Option<&str>,
+        post_id: Option<&str>,
+        timestamp: u64,
+    ) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
-        let mut posts = Vec::new();
-        match before {
-            Some(b) => {
-                let mut stmt = db.prepare(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
-                     WHERE b.created_at < ?1 ORDER BY b.created_at DESC LIMIT ?2",
-                )?;
-                let mut rows = stmt.query(params![b as i64, limit as i64])?;
-                while let Some(row) = rows.next()? {
-                    posts.push(Self::row_to_post(row)?);
-                }
-            }
-            None => {
-                let mut stmt = db.prepare(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
-                     ORDER BY b.created_at DESC LIMIT ?1",
-                )?;
-                let mut rows = stmt.query(params![limit as i64])?;
-                while let Some(row) = rows.next()? {
-                    posts.push(Self::row_to_post(row)?);
-                }
-            }
-        }
-        Ok(posts)
+        let mut hasher = Sha256::new();
+        hasher.update(kind.as_bytes());
+        hasher.update(actor.as_bytes());
+        hasher.update(target_post_id.unwrap_or("").as_bytes());
+        hasher.update(post_id.unwrap_or("").as_bytes());
+        let id = format!("{:x}", hasher.finalize());
+        db.execute(
+            "INSERT OR IGNORE INTO notifications (id, kind, actor, target_post_id, post_id, timestamp, read)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+            params![id, kind, actor, target_post_id, post_id, timestamp as i64],
+        )?;
+        Ok(())
     }
 
-    // -- Mentions --
-
-    pub fn get_mentions_feed(
+    pub fn get_notifications(
         &self,
-        my_pubkey: &str,
         limit: usize,
         before: Option<u64>,
-    ) -> anyhow::Result<Vec<Post>> {
+    ) -> anyhow::Result<Vec<Notification>> {
         let db = self.db.lock().unwrap();
         let hidden =
-            "AND pm.post_author NOT IN (SELECT pubkey FROM mutes UNION SELECT pubkey FROM blocks)";
-        let mut posts = Vec::new();
+            "AND n.actor NOT IN (SELECT pubkey FROM mutes UNION SELECT pubkey FROM blocks)";
+        let mut notifications = Vec::new();
         match before {
             Some(b) => {
                 let sql = format!(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM post_mentions pm
-                     JOIN posts p ON pm.post_id = p.id
-                     WHERE pm.mentioned_pubkey = ?1 AND pm.post_timestamp < ?2 {hidden}
-                     ORDER BY pm.post_timestamp DESC LIMIT ?3"
+                    "SELECT id, kind, actor, target_post_id, post_id, timestamp, read
+                     FROM notifications n
+                     WHERE n.timestamp < ?1 {hidden}
+                     ORDER BY n.timestamp DESC LIMIT ?2"
                 );
                 let mut stmt = db.prepare(&sql)?;
-                let mut rows = stmt.query(params![my_pubkey, b as i64, limit as i64])?;
+                let mut rows = stmt.query(params![b as i64, limit as i64])?;
                 while let Some(row) = rows.next()? {
-                    posts.push(Self::row_to_post(row)?);
+                    notifications.push(Self::row_to_notification(row)?);
                 }
             }
             None => {
                 let sql = format!(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM post_mentions pm
-                     JOIN posts p ON pm.post_id = p.id
-                     WHERE pm.mentioned_pubkey = ?1 {hidden}
-                     ORDER BY pm.post_timestamp DESC LIMIT ?2"
+                    "SELECT id, kind, actor, target_post_id, post_id, timestamp, read
+                     FROM notifications n
+                     WHERE 1=1 {hidden}
+                     ORDER BY n.timestamp DESC LIMIT ?1"
                 );
                 let mut stmt = db.prepare(&sql)?;
-                let mut rows = stmt.query(params![my_pubkey, limit as i64])?;
+                let mut rows = stmt.query(params![limit as i64])?;
                 while let Some(row) = rows.next()? {
-                    posts.push(Self::row_to_post(row)?);
+                    notifications.push(Self::row_to_notification(row)?);
                 }
             }
         }
-        Ok(posts)
+        Ok(notifications)
     }
 
-    pub fn get_unread_mention_count(&self, my_pubkey: &str) -> anyhow::Result<u32> {
+    fn row_to_notification(row: &rusqlite::Row) -> rusqlite::Result<Notification> {
+        let read_int: i32 = row.get(6)?;
+        Ok(Notification {
+            id: row.get(0)?,
+            kind: row.get(1)?,
+            actor: row.get(2)?,
+            target_post_id: row.get(3)?,
+            post_id: row.get(4)?,
+            timestamp: row.get::<_, i64>(5)? as u64,
+            read: read_int != 0,
+        })
+    }
+
+    pub fn get_unread_notification_count(&self) -> anyhow::Result<u32> {
         let db = self.db.lock().unwrap();
-        let last_read: i64 = db.query_row(
-            "SELECT last_read_timestamp FROM mention_read_marker WHERE key='self'",
-            [],
-            |row| row.get(0),
-        )?;
         let count: i64 = db.query_row(
-            "SELECT COUNT(*) FROM post_mentions WHERE mentioned_pubkey=?1 AND post_timestamp > ?2",
-            params![my_pubkey, last_read],
+            "SELECT COUNT(*) FROM notifications WHERE read=0",
+            [],
             |row| row.get(0),
         )?;
         Ok(count as u32)
     }
 
-    pub fn mark_mentions_read(&self) -> anyhow::Result<()> {
+    pub fn mark_notifications_read(&self) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
-        db.execute(
-            "UPDATE mention_read_marker SET last_read_timestamp=?1 WHERE key='self'",
-            params![now],
-        )?;
+        db.execute("UPDATE notifications SET read=1 WHERE read=0", [])?;
         Ok(())
     }
 }

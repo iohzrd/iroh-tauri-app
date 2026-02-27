@@ -189,41 +189,40 @@ async fn get_feed(
     limit: Option<usize>,
     before: Option<u64>,
 ) -> Result<Vec<Post>, String> {
-    let posts = state
-        .storage
-        .get_feed(limit.unwrap_or(20), before)
-        .map_err(|e| e.to_string())?;
+    let q = crate::storage::FeedQuery {
+        limit: limit.unwrap_or(20),
+        before,
+    };
+    let posts = state.storage.get_feed(&q).map_err(|e| e.to_string())?;
     log::info!("[feed] loaded {} posts", posts.len());
     Ok(posts)
 }
 
 #[tauri::command]
-async fn get_mentions(
+async fn get_notifications(
     state: State<'_, Arc<AppState>>,
     limit: Option<usize>,
     before: Option<u64>,
-) -> Result<Vec<Post>, String> {
-    let my_id = state.endpoint.id().to_string();
+) -> Result<Vec<storage::Notification>, String> {
     state
         .storage
-        .get_mentions_feed(&my_id, limit.unwrap_or(20), before)
+        .get_notifications(limit.unwrap_or(30), before)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_unread_mention_count(state: State<'_, Arc<AppState>>) -> Result<u32, String> {
-    let my_id = state.endpoint.id().to_string();
+async fn get_unread_notification_count(state: State<'_, Arc<AppState>>) -> Result<u32, String> {
     state
         .storage
-        .get_unread_mention_count(&my_id)
+        .get_unread_notification_count()
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn mark_mentions_read(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+async fn mark_notifications_read(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state
         .storage
-        .mark_mentions_read()
+        .mark_notifications_read()
         .map_err(|e| e.to_string())
 }
 
@@ -272,8 +271,38 @@ fn process_sync_result(
             log::error!("[{label}] failed to store post: {e}");
             continue;
         }
-        if post.author != my_id && parse_mentions(&post.content).contains(&my_id.to_string()) {
-            let _ = app_handle.emit("mentioned-in-post", post);
+        if post.author != my_id {
+            if parse_mentions(&post.content).contains(&my_id.to_string()) {
+                let _ = storage.insert_notification(
+                    "mention",
+                    &post.author,
+                    None,
+                    Some(&post.id),
+                    post.timestamp,
+                );
+                let _ = app_handle.emit("mentioned-in-post", post);
+                let _ = app_handle.emit("notification-received", ());
+            }
+            if post.reply_to_author.as_deref() == Some(my_id) {
+                let _ = storage.insert_notification(
+                    "reply",
+                    &post.author,
+                    post.reply_to.as_deref(),
+                    Some(&post.id),
+                    post.timestamp,
+                );
+                let _ = app_handle.emit("notification-received", ());
+            }
+            if post.quote_of_author.as_deref() == Some(my_id) {
+                let _ = storage.insert_notification(
+                    "quote",
+                    &post.author,
+                    post.quote_of.as_deref(),
+                    Some(&post.id),
+                    post.timestamp,
+                );
+                let _ = app_handle.emit("notification-received", ());
+            }
         }
         stored += 1;
     }
@@ -288,6 +317,16 @@ fn process_sync_result(
             && verify_interaction_signature(interaction).is_ok()
         {
             let _ = storage.save_interaction(interaction);
+            if interaction.target_author == my_id && interaction.author != my_id {
+                let _ = storage.insert_notification(
+                    "like",
+                    &interaction.author,
+                    Some(&interaction.target_post_id),
+                    None,
+                    interaction.timestamp,
+                );
+                let _ = app_handle.emit("notification-received", ());
+            }
         }
     }
     stored
@@ -972,18 +1011,6 @@ async fn is_bookmarked(state: State<'_, Arc<AppState>>, post_id: String) -> Resu
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-async fn get_bookmarks(
-    state: State<'_, Arc<AppState>>,
-    limit: Option<usize>,
-    before: Option<u64>,
-) -> Result<Vec<Post>, String> {
-    state
-        .storage
-        .get_bookmarks(limit.unwrap_or(20), before)
-        .map_err(|e| e.to_string())
-}
-
 // -- Mute / Block --
 
 #[tauri::command]
@@ -1510,9 +1537,9 @@ pub fn run() {
             create_post,
             delete_post,
             get_feed,
-            get_mentions,
-            get_unread_mention_count,
-            mark_mentions_read,
+            get_notifications,
+            get_unread_notification_count,
+            mark_notifications_read,
             get_user_posts,
             sync_posts,
             get_sync_status,
@@ -1544,7 +1571,6 @@ pub fn run() {
             send_dm_signal,
             toggle_bookmark,
             is_bookmarked,
-            get_bookmarks,
             mute_user,
             unmute_user,
             is_muted,

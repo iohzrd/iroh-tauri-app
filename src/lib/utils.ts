@@ -166,7 +166,7 @@ export function renderContent(text: string, selfId: string): string {
           ? "You"
           : (cached?.name ?? shortId(match.pubkey));
       parts.push(
-        `<a href="/user/${escapeHtml(match.pubkey)}" class="mention">@${escapeHtml(displayName)}</a>`,
+        `<a href="/profile/${escapeHtml(match.pubkey)}" class="mention">@${escapeHtml(displayName)}</a>`,
       );
       if (!cached && match.pubkey !== selfId) {
         getDisplayName(match.pubkey, selfId);

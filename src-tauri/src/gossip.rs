@@ -68,7 +68,11 @@ impl FeedManager {
                                 Ok(is_new) => {
                                     let _ = app_handle.emit("follower-changed", &pubkey);
                                     if is_new {
+                                        let _ = storage.insert_notification(
+                                            "follower", &pubkey, None, None, now,
+                                        );
                                         let _ = app_handle.emit("new-follower", &pubkey);
+                                        let _ = app_handle.emit("notification-received", ());
                                     }
                                 }
                                 Err(e) => {
@@ -247,10 +251,42 @@ impl FeedManager {
                                                     "[gossip-rx] failed to store post: {e}"
                                                 );
                                             }
-                                            if post.author != my_id
-                                                && parse_mentions(&post.content).contains(&my_id)
-                                            {
-                                                let _ = app_handle.emit("mentioned-in-post", &post);
+                                            if post.author != my_id {
+                                                if parse_mentions(&post.content).contains(&my_id) {
+                                                    let _ = storage.insert_notification(
+                                                        "mention",
+                                                        &post.author,
+                                                        None,
+                                                        Some(&post.id),
+                                                        post.timestamp,
+                                                    );
+                                                    let _ =
+                                                        app_handle.emit("mentioned-in-post", &post);
+                                                    let _ = app_handle
+                                                        .emit("notification-received", ());
+                                                }
+                                                if post.reply_to_author.as_deref() == Some(&my_id) {
+                                                    let _ = storage.insert_notification(
+                                                        "reply",
+                                                        &post.author,
+                                                        post.reply_to.as_deref(),
+                                                        Some(&post.id),
+                                                        post.timestamp,
+                                                    );
+                                                    let _ = app_handle
+                                                        .emit("notification-received", ());
+                                                }
+                                                if post.quote_of_author.as_deref() == Some(&my_id) {
+                                                    let _ = storage.insert_notification(
+                                                        "quote",
+                                                        &post.author,
+                                                        post.quote_of.as_deref(),
+                                                        Some(&post.id),
+                                                        post.timestamp,
+                                                    );
+                                                    let _ = app_handle
+                                                        .emit("notification-received", ());
+                                                }
                                             }
                                             let _ = app_handle.emit("feed-updated", ());
                                         }
@@ -344,6 +380,19 @@ impl FeedManager {
                                                 log::error!(
                                                     "[gossip-rx] failed to store interaction: {e}"
                                                 );
+                                            }
+                                            if interaction.target_author == my_id
+                                                && interaction.author != my_id
+                                            {
+                                                let _ = storage.insert_notification(
+                                                    "like",
+                                                    &interaction.author,
+                                                    Some(&interaction.target_post_id),
+                                                    None,
+                                                    interaction.timestamp,
+                                                );
+                                                let _ =
+                                                    app_handle.emit("notification-received", ());
                                             }
                                             let _ = app_handle
                                                 .emit("interaction-received", &interaction);

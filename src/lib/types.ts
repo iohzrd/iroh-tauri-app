@@ -75,6 +75,16 @@ export interface PostCounts {
   reposted_by_me: boolean;
 }
 
+export interface AppNotification {
+  id: string;
+  kind: "mention" | "like" | "reply" | "quote" | "follower";
+  actor: string;
+  target_post_id: string | null;
+  post_id: string | null;
+  timestamp: number;
+  read: boolean;
+}
+
 export interface SyncResult {
   posts: Post[];
   remote_total: number;

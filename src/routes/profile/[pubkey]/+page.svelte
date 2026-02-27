@@ -17,7 +17,14 @@
     SyncResult,
     SyncStatus,
   } from "$lib/types";
-  import { shortId, copyToClipboard, setupInfiniteScroll } from "$lib/utils";
+  import {
+    shortId,
+    copyToClipboard,
+    detectImageMime,
+    avatarColor,
+    getInitials,
+    setupInfiniteScroll,
+  } from "$lib/utils";
 
   let pubkey: string = $derived(page.params.pubkey ?? "");
   let nodeId = $state("");
@@ -47,6 +54,28 @@
   let togglingMute = $state(false);
   let togglingBlock = $state(false);
   let showQr = $state(false);
+
+  // Profile editing (isSelf only)
+  let editingProfile = $state(false);
+  let editDisplayName = $state("");
+  let editBio = $state("");
+  let editAvatarHash = $state<string | null>(null);
+  let editAvatarTicket = $state<string | null>(null);
+  let editAvatarPreview = $state<string | null>(null);
+  let editIsPrivate = $state(false);
+  let savedDisplayName = $state("");
+  let savedBio = $state("");
+  let savedAvatarHash = $state<string | null>(null);
+  let savedIsPrivate = $state(false);
+  let saving = $state(false);
+  let uploading = $state(false);
+  let fileInput = $state<HTMLInputElement>(null!);
+  let isDirty = $derived(
+    editDisplayName !== savedDisplayName ||
+      editBio !== savedBio ||
+      editAvatarHash !== savedAvatarHash ||
+      editIsPrivate !== savedIsPrivate,
+  );
 
   const FILTERS = [
     { value: "all", label: "All" },
@@ -242,6 +271,100 @@
     setTimeout(() => (copyFeedback = false), 1500);
   }
 
+  function startEditing() {
+    if (!profile) return;
+    editDisplayName = profile.display_name;
+    editBio = profile.bio;
+    editAvatarHash = profile.avatar_hash;
+    editAvatarTicket = profile.avatar_ticket;
+    editIsPrivate = profile.is_private;
+    savedDisplayName = profile.display_name;
+    savedBio = profile.bio;
+    savedAvatarHash = profile.avatar_hash;
+    savedIsPrivate = profile.is_private;
+    if (profile.avatar_ticket) {
+      loadEditAvatarPreview(profile.avatar_ticket);
+    }
+    editingProfile = true;
+  }
+
+  function cancelEditing() {
+    editingProfile = false;
+    if (editAvatarPreview) {
+      URL.revokeObjectURL(editAvatarPreview);
+      editAvatarPreview = null;
+    }
+  }
+
+  async function loadEditAvatarPreview(ticket: string) {
+    try {
+      const bytes: number[] = await invoke("fetch_blob_bytes", { ticket });
+      const data = new Uint8Array(bytes);
+      const blob = new Blob([data], { type: detectImageMime(data) });
+      if (editAvatarPreview) URL.revokeObjectURL(editAvatarPreview);
+      editAvatarPreview = URL.createObjectURL(blob);
+    } catch (e) {
+      console.error("Failed to load avatar:", e);
+    }
+  }
+
+  async function handleAvatarFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    uploading = true;
+    try {
+      const buffer = await file.arrayBuffer();
+      const data = Array.from(new Uint8Array(buffer));
+      const result: { hash: string; ticket: string } = await invoke(
+        "add_blob_bytes",
+        { data },
+      );
+      editAvatarHash = result.hash;
+      editAvatarTicket = result.ticket;
+      if (editAvatarPreview) URL.revokeObjectURL(editAvatarPreview);
+      editAvatarPreview = URL.createObjectURL(file);
+    } catch (err) {
+      showToast(`Upload failed: ${err}`);
+    }
+    uploading = false;
+    input.value = "";
+  }
+
+  function removeAvatar() {
+    editAvatarHash = null;
+    editAvatarTicket = null;
+    if (editAvatarPreview) {
+      URL.revokeObjectURL(editAvatarPreview);
+      editAvatarPreview = null;
+    }
+  }
+
+  async function saveProfile() {
+    saving = true;
+    editDisplayName = editDisplayName.trim();
+    editBio = editBio.trim();
+    try {
+      await invoke("save_my_profile", {
+        displayName: editDisplayName,
+        bio: editBio,
+        avatarHash: editAvatarHash,
+        avatarTicket: editAvatarTicket,
+        isPrivate: editIsPrivate,
+      });
+      savedDisplayName = editDisplayName;
+      savedBio = editBio;
+      savedAvatarHash = editAvatarHash;
+      savedIsPrivate = editIsPrivate;
+      await reloadProfile();
+      editingProfile = false;
+      showToast("Profile saved", "success");
+    } catch (err) {
+      showToast(`Error: ${err}`);
+    }
+    saving = false;
+  }
+
   function confirmDelete(id: string) {
     pendingDeleteId = id;
   }
@@ -265,6 +388,7 @@
   function handleGlobalKey(e: KeyboardEvent) {
     if (e.key === "Escape") {
       if (pendingDeleteId) cancelDelete();
+      else if (editingProfile) cancelEditing();
       else if (showQr) showQr = false;
     }
   }
@@ -307,6 +431,7 @@
     );
     window.addEventListener("keydown", handleGlobalKey);
     return () => {
+      if (editAvatarPreview) URL.revokeObjectURL(editAvatarPreview);
       blobs.revokeAll();
       unlisteners.forEach((p) => p.then((fn) => fn()));
       window.removeEventListener("keydown", handleGlobalKey);
@@ -334,26 +459,122 @@
     <p>Loading profile...</p>
   </div>
 {:else}
-  <a href="/" class="back-link">&larr; Back to feed</a>
+  {#if !isSelf}
+    <a href="/" class="back-link">&larr; Back to feed</a>
+  {/if}
 
-  <div class="profile-header">
-    <Avatar
-      {pubkey}
-      name={displayName}
-      {isSelf}
-      ticket={profile?.avatar_ticket}
-      size={56}
-    />
-    <div class="profile-info">
-      <h2>{displayName}</h2>
-      {#if profile?.is_private}
-        <span class="private-badge">Private profile</span>
-      {/if}
-      {#if profile?.bio}
-        <p class="bio">{profile.bio}</p>
+  {#if isSelf && editingProfile}
+    <h2 class="edit-heading">Edit Profile</h2>
+    <div class="edit-form">
+      <div class="field">
+        <span class="field-label">Avatar</span>
+        <div class="avatar-row">
+          {#if editAvatarPreview}
+            <img
+              src={editAvatarPreview}
+              alt="Avatar"
+              class="avatar-edit-preview"
+            />
+          {:else}
+            <div
+              class="avatar-fallback"
+              style="background:{avatarColor(pubkey)}"
+            >
+              {getInitials(editDisplayName || "You", !editDisplayName)}
+            </div>
+          {/if}
+          <div class="avatar-actions">
+            <button
+              class="avatar-btn"
+              onclick={() => fileInput.click()}
+              disabled={uploading}
+            >
+              {uploading
+                ? "Uploading..."
+                : editAvatarHash
+                  ? "Change"
+                  : "Upload"}
+            </button>
+            {#if editAvatarHash}
+              <button class="avatar-btn remove" onclick={removeAvatar}
+                >Remove</button
+              >
+            {/if}
+          </div>
+          <input
+            bind:this={fileInput}
+            type="file"
+            accept="image/*"
+            onchange={handleAvatarFile}
+            hidden
+          />
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Display Name</span>
+        <input bind:value={editDisplayName} placeholder="Anonymous" />
+      </div>
+
+      <div class="field">
+        <span class="field-label">Bio</span>
+        <textarea
+          bind:value={editBio}
+          placeholder="Tell the world about yourself..."
+          rows="3"
+        ></textarea>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Privacy</span>
+        <label class="toggle-row">
+          <span class="toggle-switch" class:on={editIsPrivate}>
+            <input type="checkbox" bind:checked={editIsPrivate} />
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+          </span>
+          <span class="toggle-text">Private profile</span>
+        </label>
+        <p class="field-hint">
+          When enabled, only followers can sync your posts and profile.
+        </p>
+      </div>
+
+      <div class="edit-actions">
+        <button class="cancel-btn" onclick={cancelEditing}>Cancel</button>
+        <button
+          class="save-btn"
+          onclick={saveProfile}
+          disabled={saving || !isDirty}
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  {:else}
+    <div class="profile-header">
+      <Avatar
+        {pubkey}
+        name={displayName}
+        {isSelf}
+        ticket={profile?.avatar_ticket}
+        size={56}
+      />
+      <div class="profile-info">
+        <h2>{displayName}</h2>
+        {#if profile?.is_private}
+          <span class="private-badge">Private profile</span>
+        {/if}
+        {#if profile?.bio}
+          <p class="bio">{profile.bio}</p>
+        {/if}
+      </div>
+      {#if isSelf}
+        <button class="edit-btn" onclick={startEditing}>Edit</button>
       {/if}
     </div>
-  </div>
+  {/if}
 
   <div class="id-row">
     <code>{pubkey}</code>
@@ -772,5 +993,240 @@
     padding: 0.75rem;
     border-top: 1px solid #2a2a4a;
     margin-top: 0.5rem;
+  }
+
+  .edit-btn {
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+
+  .edit-btn:hover {
+    background: #3a3a5a;
+    color: #e0d4ff;
+  }
+
+  .edit-heading {
+    color: #a78bfa;
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+  }
+
+  .edit-form {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .field {
+    margin-bottom: 1rem;
+  }
+
+  .field-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+  }
+
+  .avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .avatar-edit-preview {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .avatar-fallback {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 700;
+    color: white;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .avatar-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .avatar-btn {
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 4px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .avatar-btn:hover:not(:disabled) {
+    background: #3a3a5a;
+  }
+
+  .avatar-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .avatar-btn.remove {
+    color: #f87171;
+  }
+
+  .avatar-btn.remove:hover {
+    background: #f8717120;
+  }
+
+  .edit-form input:not([type="checkbox"]),
+  .edit-form textarea {
+    width: 100%;
+    background: #0f0f23;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    color: #e0e0e0;
+    font-family: inherit;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+
+  .edit-form input:not([type="checkbox"]):focus,
+  .edit-form textarea:focus {
+    outline: none;
+    border-color: #a78bfa;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+  }
+
+  .toggle-switch {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-track {
+    display: block;
+    width: 40px;
+    height: 22px;
+    background: #2a2a4a;
+    border-radius: 11px;
+    transition: background 0.2s;
+  }
+
+  .toggle-switch.on .toggle-track {
+    background: #7c3aed;
+  }
+
+  .toggle-thumb {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: #888;
+    border-radius: 50%;
+    position: relative;
+    top: 3px;
+    left: 3px;
+    transition:
+      transform 0.2s,
+      background 0.2s;
+  }
+
+  .toggle-switch.on .toggle-thumb {
+    transform: translateX(18px);
+    background: #fff;
+  }
+
+  .toggle-text {
+    font-size: 0.9rem;
+    color: #e0e0e0;
+  }
+
+  .field-hint {
+    margin: 0.25rem 0 0;
+    font-size: 0.75rem;
+    color: #666;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .cancel-btn {
+    flex: 1;
+    background: #2a2a4a;
+    color: #c4b5fd;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .cancel-btn:hover {
+    background: #3a3a5a;
+  }
+
+  .save-btn {
+    flex: 1;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .save-btn:hover:not(:disabled) {
+    background: #6d28d9;
+  }
+
+  .save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

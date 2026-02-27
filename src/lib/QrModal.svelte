@@ -10,7 +10,7 @@
   let { nodeId, onclose }: Props = $props();
   let copyFeedback = $state(false);
 
-  let deepLinkUrl = $derived(`iroh-social://user/${nodeId}`);
+  let deepLinkUrl = $derived(`iroh-social://profile/${nodeId}`);
 
   async function copyLink() {
     await copyToClipboard(deepLinkUrl);

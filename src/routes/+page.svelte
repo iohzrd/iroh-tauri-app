@@ -52,7 +52,6 @@
   let sentinel = $state<HTMLDivElement>(null!);
   let syncFailures = $state<string[]>([]);
   let showSyncDetails = $state(false);
-
   // Pull-to-refresh
   let pullStartY = 0;
   let pullDistance = $state(0);
@@ -94,10 +93,7 @@
 
   async function loadFeed() {
     try {
-      const newPosts: Post[] = await invoke("get_feed", {
-        limit: 20,
-        before: null,
-      });
+      const newPosts: Post[] = await invoke("get_feed", { limit: 20 });
       posts = newPosts;
       hasMore = newPosts.length >= 20;
     } catch (e) {
@@ -379,7 +375,6 @@
         loadFeed();
       }),
     );
-
     window.addEventListener("scroll", handleScroll);
     window.addEventListener("keydown", handleGlobalKey);
     document.addEventListener("visibilitychange", handleVisibility);
@@ -561,6 +556,8 @@
       </div>
     {/if}
 
+    <hr class="divider" />
+
     <div class="feed">
       {#each posts as post (post.id)}
         <PostCard
@@ -659,6 +656,12 @@
 {/if}
 
 <style>
+  .divider {
+    border: none;
+    border-top: 1px solid #2a2a4a;
+    margin: 0.25rem 0 1rem;
+  }
+
   .node-id {
     display: flex;
     align-items: center;

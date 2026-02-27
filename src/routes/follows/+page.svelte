@@ -264,7 +264,7 @@
     <div class="follow-list">
       {#each follows as f (f.pubkey)}
         <div class="follow-item">
-          <a href="/user/{f.pubkey}" class="follow-info">
+          <a href="/profile/{f.pubkey}" class="follow-info">
             {#await getDisplayName(f.pubkey, "") then name}
               <Avatar
                 pubkey={f.pubkey}
@@ -349,7 +349,7 @@
     <div class="follow-list">
       {#each followers as f (f.pubkey)}
         <div class="follow-item">
-          <a href="/user/{f.pubkey}" class="follow-info">
+          <a href="/profile/{f.pubkey}" class="follow-info">
             {#await getDisplayName(f.pubkey, "") then name}
               <Avatar
                 pubkey={f.pubkey}
@@ -392,7 +392,7 @@
       <div class="follow-list">
         {#each mutedPubkeys as pubkey (pubkey)}
           <div class="follow-item">
-            <a href="/user/{pubkey}" class="follow-info">
+            <a href="/profile/{pubkey}" class="follow-info">
               {#await getDisplayName(pubkey, "") then name}
                 <Avatar
                   {pubkey}
@@ -426,7 +426,7 @@
       <div class="follow-list">
         {#each blockedPubkeys as pubkey (pubkey)}
           <div class="follow-item">
-            <a href="/user/{pubkey}" class="follow-info">
+            <a href="/profile/{pubkey}" class="follow-info">
               {#await getDisplayName(pubkey, "") then name}
                 <Avatar
                   {pubkey}
