@@ -11,7 +11,7 @@
   } from "@tauri-apps/plugin-notification";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { goto } from "$app/navigation";
-  import type { NodeStatus, StoredMessage } from "$lib/types";
+  import type { NodeStatus, Post, StoredMessage } from "$lib/types";
 
   const ZOOM_KEY = "app-zoom-level";
   const ZOOM_STEP = 0.2;
@@ -22,6 +22,7 @@
   let status = $state<NodeStatus | null>(null);
   let zoomLevel = $state(1.0);
   let unreadDmCount = $state(0);
+  let unreadMentionCount = $state(0);
 
   async function applyZoom(level: number) {
     zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
@@ -75,6 +76,14 @@
     }
   }
 
+  async function pollUnreadMentions() {
+    try {
+      unreadMentionCount = await invoke("get_unread_mention_count");
+    } catch {
+      // Node not ready yet
+    }
+  }
+
   onMount(() => {
     const saved = localStorage.getItem(ZOOM_KEY);
     if (saved) {
@@ -87,8 +96,10 @@
     window.addEventListener("keydown", handleZoomKeys);
     pollStatus();
     pollUnread();
+    pollUnreadMentions();
     const statusInterval = setInterval(pollStatus, 10000);
     const unreadInterval = setInterval(pollUnread, 10000);
+    const mentionInterval = setInterval(pollUnreadMentions, 10000);
     const unlisteners: Promise<UnlistenFn>[] = [];
 
     async function setupNotifications() {
@@ -126,6 +137,31 @@
           },
         ),
       );
+      unlisteners.push(
+        listen<Post>("mentioned-in-post", async (event) => {
+          pollUnreadMentions();
+          const isViewingActivity = page.url.pathname === "/activity";
+          if (!isViewingActivity && permitted) {
+            const post = event.payload;
+            let title = post.author.slice(0, 8);
+            try {
+              const profile = await invoke<{ display_name: string } | null>(
+                "get_remote_profile",
+                { pubkey: post.author },
+              );
+              if (profile?.display_name) {
+                title = profile.display_name;
+              }
+            } catch {
+              // keep short pubkey as title
+            }
+            sendNotification({
+              title: `${title} mentioned you`,
+              body: post.content.slice(0, 100) || "Mentioned you in a post",
+            });
+          }
+        }),
+      );
     }
 
     setupNotifications();
@@ -150,6 +186,7 @@
       window.removeEventListener("keydown", handleZoomKeys);
       clearInterval(statusInterval);
       clearInterval(unreadInterval);
+      clearInterval(mentionInterval);
       unlisteners.forEach((p) => p.then((fn) => fn()));
     };
   });
@@ -158,6 +195,12 @@
 <div class="app">
   <nav>
     <a href="/" class:active={page.url.pathname === "/"}>Feed</a>
+    <a href="/activity" class:active={page.url.pathname === "/activity"}>
+      Activity
+      {#if unreadMentionCount > 0}
+        <span class="unread-badge">{unreadMentionCount}</span>
+      {/if}
+    </a>
     <a href="/profile" class:active={page.url.pathname === "/profile"}
       >Profile</a
     >

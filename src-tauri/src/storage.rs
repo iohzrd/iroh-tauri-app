@@ -1,6 +1,6 @@
 use iroh_social_types::{
     ConversationMeta, FollowEntry, FollowerEntry, Interaction, InteractionKind, MediaAttachment,
-    Post, Profile, StoredMessage,
+    Post, Profile, StoredMessage, parse_mentions,
 };
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -65,6 +65,10 @@ impl Storage {
         (
             "010_quote_posts",
             include_str!("../migrations/010_quote_posts.sql"),
+        ),
+        (
+            "011_mentions",
+            include_str!("../migrations/011_mentions.sql"),
         ),
     ];
 
@@ -155,6 +159,14 @@ impl Storage {
                 post.signature,
             ],
         )?;
+        let mentions = parse_mentions(&post.content);
+        for mentioned in &mentions {
+            db.execute(
+                "INSERT OR IGNORE INTO post_mentions (post_id, mentioned_pubkey, post_author, post_timestamp)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![post.id, mentioned, post.author, post.timestamp as i64],
+            )?;
+        }
         Ok(())
     }
 
@@ -202,6 +214,7 @@ impl Storage {
 
     pub fn delete_post(&self, id: &str) -> anyhow::Result<bool> {
         let db = self.db.lock().unwrap();
+        db.execute("DELETE FROM post_mentions WHERE post_id=?1", params![id])?;
         let count = db.execute("DELETE FROM posts WHERE id=?1", params![id])?;
         Ok(count > 0)
     }
@@ -435,8 +448,7 @@ impl Storage {
         drop(insert);
 
         let mut stmt = db.prepare(
-            "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature
-             FROM posts p
+            "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature             FROM posts p
              WHERE p.author=?1 AND p.id NOT IN (SELECT id FROM _sync_known_ids)
              ORDER BY p.timestamp ASC LIMIT ?2 OFFSET ?3",
         )?;
@@ -1227,8 +1239,7 @@ impl Storage {
         match before {
             Some(b) => {
                 let mut stmt = db.prepare(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature
-                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
                      WHERE b.created_at < ?1 ORDER BY b.created_at DESC LIMIT ?2",
                 )?;
                 let mut rows = stmt.query(params![b as i64, limit as i64])?;
@@ -1238,8 +1249,7 @@ impl Storage {
             }
             None => {
                 let mut stmt = db.prepare(
-                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature
-                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM bookmarks b JOIN posts p ON b.post_id = p.id
                      ORDER BY b.created_at DESC LIMIT ?1",
                 )?;
                 let mut rows = stmt.query(params![limit as i64])?;
@@ -1249,5 +1259,76 @@ impl Storage {
             }
         }
         Ok(posts)
+    }
+
+    // -- Mentions --
+
+    pub fn get_mentions_feed(
+        &self,
+        my_pubkey: &str,
+        limit: usize,
+        before: Option<u64>,
+    ) -> anyhow::Result<Vec<Post>> {
+        let db = self.db.lock().unwrap();
+        let hidden =
+            "AND pm.post_author NOT IN (SELECT pubkey FROM mutes UNION SELECT pubkey FROM blocks)";
+        let mut posts = Vec::new();
+        match before {
+            Some(b) => {
+                let sql = format!(
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM post_mentions pm
+                     JOIN posts p ON pm.post_id = p.id
+                     WHERE pm.mentioned_pubkey = ?1 AND pm.post_timestamp < ?2 {hidden}
+                     ORDER BY pm.post_timestamp DESC LIMIT ?3"
+                );
+                let mut stmt = db.prepare(&sql)?;
+                let mut rows = stmt.query(params![my_pubkey, b as i64, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    posts.push(Self::row_to_post(row)?);
+                }
+            }
+            None => {
+                let sql = format!(
+                    "SELECT p.id, p.author, p.content, p.timestamp, p.media_json, p.reply_to, p.reply_to_author, p.quote_of, p.quote_of_author, p.signature                     FROM post_mentions pm
+                     JOIN posts p ON pm.post_id = p.id
+                     WHERE pm.mentioned_pubkey = ?1 {hidden}
+                     ORDER BY pm.post_timestamp DESC LIMIT ?2"
+                );
+                let mut stmt = db.prepare(&sql)?;
+                let mut rows = stmt.query(params![my_pubkey, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    posts.push(Self::row_to_post(row)?);
+                }
+            }
+        }
+        Ok(posts)
+    }
+
+    pub fn get_unread_mention_count(&self, my_pubkey: &str) -> anyhow::Result<u32> {
+        let db = self.db.lock().unwrap();
+        let last_read: i64 = db.query_row(
+            "SELECT last_read_timestamp FROM mention_read_marker WHERE key='self'",
+            [],
+            |row| row.get(0),
+        )?;
+        let count: i64 = db.query_row(
+            "SELECT COUNT(*) FROM post_mentions WHERE mentioned_pubkey=?1 AND post_timestamp > ?2",
+            params![my_pubkey, last_read],
+            |row| row.get(0),
+        )?;
+        Ok(count as u32)
+    }
+
+    pub fn mark_mentions_read(&self) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        db.execute(
+            "UPDATE mention_read_marker SET last_read_timestamp=?1 WHERE key='self'",
+            params![now],
+        )?;
+        Ok(())
     }
 }

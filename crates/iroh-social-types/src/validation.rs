@@ -1,4 +1,5 @@
 use crate::types::{Interaction, Post, Profile};
+use iroh::PublicKey;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAX_POST_CONTENT_LEN: usize = 10_000;
@@ -72,4 +73,32 @@ pub fn validate_post(post: &Post) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Extract all valid pubkey mentions from post content.
+/// Mentions use the format @{pubkey} where pubkey is a valid iroh public key hex string.
+pub fn parse_mentions(content: &str) -> Vec<String> {
+    let mut mentions = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'@' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_hexdigit() {
+                end += 1;
+            }
+            let len = end - start;
+            if len >= 52 {
+                let candidate = content[start..end].to_lowercase();
+                if candidate.parse::<PublicKey>().is_ok() && !mentions.contains(&candidate) {
+                    mentions.push(candidate);
+                }
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    mentions
 }

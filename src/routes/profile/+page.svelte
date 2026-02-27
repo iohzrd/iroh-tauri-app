@@ -382,6 +382,7 @@
         <ReplyComposer
           replyToId={post.id}
           replyToAuthor={post.author}
+          {nodeId}
           onsubmitted={() => {
             replyingTo = null;
             loadPosts();

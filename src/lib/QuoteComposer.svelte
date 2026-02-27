@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { Post } from "$lib/types";
   import { shortId, getDisplayName } from "$lib/utils";
+  import MentionAutocomplete from "$lib/MentionAutocomplete.svelte";
 
   let {
     quotedPost,
@@ -17,6 +18,9 @@
 
   let content = $state("");
   let posting = $state(false);
+  let mentionQuery = $state("");
+  let mentionActive = $state(false);
+  let mentionAutocomplete: MentionAutocomplete;
 
   let preview = $derived(
     quotedPost.content.length > 120
@@ -44,7 +48,39 @@
     posting = false;
   }
 
+  function handleMentionInput(e: Event) {
+    const textarea = e.target as HTMLTextAreaElement;
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.slice(0, cursorPos);
+    const match = textBeforeCursor.match(/@(\w*)$/);
+    if (match) {
+      mentionActive = true;
+      mentionQuery = match[1];
+    } else {
+      mentionActive = false;
+      mentionQuery = "";
+    }
+  }
+
+  function insertMention(pubkey: string) {
+    const textarea = document.querySelector(
+      ".quote-composer textarea",
+    ) as HTMLTextAreaElement;
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = content.slice(0, cursorPos);
+    const textAfterCursor = content.slice(cursorPos);
+    const match = textBeforeCursor.match(/@(\w*)$/);
+    if (match) {
+      const beforeMention = textBeforeCursor.slice(0, match.index);
+      content = `${beforeMention}@${pubkey} ${textAfterCursor}`;
+    }
+    mentionActive = false;
+    mentionQuery = "";
+    textarea.focus();
+  }
+
   function handleKey(e: KeyboardEvent) {
+    if (mentionAutocomplete?.handleKey(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -54,7 +90,7 @@
   }
 </script>
 
-<div class="quote-composer">
+<div class="quote-composer" style="position: relative;">
   <div class="quoted-preview">
     {#await getDisplayName(quotedPost.author, nodeId)}
       <span class="quote-author">{shortId(quotedPost.author)}</span>
@@ -67,11 +103,19 @@
       <span class="quote-text empty">[no text]</span>
     {/if}
   </div>
+  <MentionAutocomplete
+    bind:this={mentionAutocomplete}
+    query={mentionQuery}
+    selfId={nodeId}
+    visible={mentionActive}
+    onselect={insertMention}
+  />
   <textarea
     bind:value={content}
     placeholder="Add your commentary (optional)..."
     rows="2"
     onkeydown={handleKey}
+    oninput={handleMentionInput}
   ></textarea>
   <div class="quote-actions">
     <button class="cancel-btn" onclick={oncancel}>Cancel</button>

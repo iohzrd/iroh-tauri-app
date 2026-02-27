@@ -7,6 +7,7 @@
   import PostCard from "$lib/PostCard.svelte";
   import ReplyComposer from "$lib/ReplyComposer.svelte";
   import QuoteComposer from "$lib/QuoteComposer.svelte";
+  import MentionAutocomplete from "$lib/MentionAutocomplete.svelte";
   import { platform } from "@tauri-apps/plugin-os";
   import { createBlobCache, setBlobContext } from "$lib/blobs";
   import { hapticImpact } from "$lib/haptics";
@@ -37,6 +38,9 @@
   let copyFeedback = $state("");
   let pendingDeleteId = $state<string | null>(null);
   let showScrollTop = $state(false);
+  let mentionQuery = $state("");
+  let mentionActive = $state(false);
+  let mentionAutocomplete = $state<MentionAutocomplete>();
   let toastMessage = $state("");
   let toastType = $state<"error" | "success">("error");
   let loadingMore = $state(false);
@@ -245,7 +249,39 @@
     pendingDeleteId = null;
   }
 
+  function handleMentionInput(e: Event) {
+    const textarea = e.target as HTMLTextAreaElement;
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.slice(0, cursorPos);
+    const match = textBeforeCursor.match(/@(\w*)$/);
+    if (match) {
+      mentionActive = true;
+      mentionQuery = match[1];
+    } else {
+      mentionActive = false;
+      mentionQuery = "";
+    }
+  }
+
+  function insertMention(pubkey: string) {
+    const textarea = document.querySelector(
+      ".compose textarea",
+    ) as HTMLTextAreaElement;
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = newPost.slice(0, cursorPos);
+    const textAfterCursor = newPost.slice(cursorPos);
+    const match = textBeforeCursor.match(/@(\w*)$/);
+    if (match) {
+      const beforeMention = textBeforeCursor.slice(0, match.index);
+      newPost = `${beforeMention}@${pubkey} ${textAfterCursor}`;
+    }
+    mentionActive = false;
+    mentionQuery = "";
+    textarea.focus();
+  }
+
   function handleKey(e: KeyboardEvent) {
+    if (mentionAutocomplete?.handleKey(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submitPost();
@@ -300,7 +336,7 @@
 
   function startAutoSync() {
     if (syncInterval) return;
-    syncInterval = setInterval(() => syncAll(), 60000);
+    syncInterval = setInterval(() => syncAll(), 600000);
   }
 
   function stopAutoSync() {
@@ -409,13 +445,21 @@
       </button>
     </div>
 
-    <div class="compose">
+    <div class="compose" style="position: relative;">
+      <MentionAutocomplete
+        bind:this={mentionAutocomplete}
+        query={mentionQuery}
+        selfId={nodeId}
+        visible={mentionActive}
+        onselect={insertMention}
+      />
       <textarea
         bind:value={newPost}
         placeholder="What's on your mind?"
         rows="3"
         maxlength={MAX_POST_LENGTH}
         onkeydown={handleKey}
+        oninput={handleMentionInput}
       ></textarea>
       <div class="compose-meta">
         <span class="hint">Shift+Enter for newline</span>
@@ -541,6 +585,7 @@
           <ReplyComposer
             replyToId={post.id}
             replyToAuthor={post.author}
+            {nodeId}
             onsubmitted={() => {
               replyingTo = null;
               loadFeed();

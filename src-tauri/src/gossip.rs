@@ -7,9 +7,9 @@ use iroh_gossip::{
     api::{Event, GossipSender},
 };
 use iroh_social_types::{
-    GossipMessage, Interaction, Post, Profile, now_millis, short_id, user_feed_topic,
-    validate_interaction, validate_post, validate_profile, verify_interaction_signature,
-    verify_post_signature,
+    GossipMessage, Interaction, Post, Profile, now_millis, parse_mentions, short_id,
+    user_feed_topic, validate_interaction, validate_post, validate_profile,
+    verify_interaction_signature, verify_post_signature,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -202,6 +202,7 @@ impl FeedManager {
 
         let storage = self.storage.clone();
         let pk = pubkey.clone();
+        let my_id = self.endpoint.id().to_string();
         let app_handle = self.app_handle.clone();
         let handle = tokio::spawn(async move {
             log::info!("[gossip-rx] listener started for {}", short_id(&pk));
@@ -245,6 +246,11 @@ impl FeedManager {
                                                 log::error!(
                                                     "[gossip-rx] failed to store post: {e}"
                                                 );
+                                            }
+                                            if post.author != my_id
+                                                && parse_mentions(&post.content).contains(&my_id)
+                                            {
+                                                let _ = app_handle.emit("mentioned-in-post", &post);
                                             }
                                             let _ = app_handle.emit("feed-updated", ());
                                         }

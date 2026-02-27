@@ -8,7 +8,7 @@
   import QuotedPostEmbed from "$lib/QuotedPostEmbed.svelte";
   import { useDisplayName } from "$lib/name.svelte";
   import type { Post } from "$lib/types";
-  import { getCachedAvatarTicket, linkify } from "$lib/utils";
+  import { getCachedAvatarTicket, renderContent } from "$lib/utils";
 
   let {
     post,
@@ -102,12 +102,14 @@
 
   {#if isRepostOnly && quotedPost}
     {#if quotedPost.content}
-      <p class="post-content">{@html linkify(quotedPost.content)}</p>
+      <p class="post-content">
+        {@html renderContent(quotedPost.content, nodeId)}
+      </p>
     {/if}
     <MediaGrid media={quotedPost.media} {onlightbox} />
   {:else}
     {#if post.content}
-      <p class="post-content">{@html linkify(post.content)}</p>
+      <p class="post-content">{@html renderContent(post.content, nodeId)}</p>
     {/if}
     <MediaGrid media={post.media} {onlightbox} />
     {#if post.quote_of}
@@ -256,5 +258,10 @@
 
   .post-content :global(a:hover) {
     text-decoration: underline;
+  }
+
+  .post-content :global(a.mention) {
+    color: #c4b5fd;
+    font-weight: 600;
   }
 </style>

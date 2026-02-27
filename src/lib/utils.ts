@@ -103,19 +103,76 @@ export function escapeHtml(text: string): string {
 }
 
 export function linkify(text: string): string {
+  return renderContent(text, "");
+}
+
+export function renderContent(text: string, selfId: string): string {
   const urlPattern = /https?:\/\/[^\s<>"')\]]+/g;
+  const mentionPattern = /@([0-9a-fA-F]{52,64})/g;
+
+  interface ContentMatch {
+    start: number;
+    end: number;
+    type: "url" | "mention";
+    text: string;
+    pubkey?: string;
+  }
+
+  const matches: ContentMatch[] = [];
+
+  let m;
+  while ((m = urlPattern.exec(text)) !== null) {
+    matches.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      type: "url",
+      text: m[0],
+    });
+  }
+  while ((m = mentionPattern.exec(text)) !== null) {
+    matches.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      type: "mention",
+      text: m[0],
+      pubkey: m[1].toLowerCase(),
+    });
+  }
+
+  matches.sort((a, b) => a.start - b.start);
+  const filtered: ContentMatch[] = [];
+  let lastEnd = 0;
+  for (const match of matches) {
+    if (match.start >= lastEnd) {
+      filtered.push(match);
+      lastEnd = match.end;
+    }
+  }
+
   const parts: string[] = [];
   let lastIndex = 0;
-  let match;
-  while ((match = urlPattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(escapeHtml(text.slice(lastIndex, match.index)));
+  for (const match of filtered) {
+    if (match.start > lastIndex) {
+      parts.push(escapeHtml(text.slice(lastIndex, match.start)));
     }
-    const url = match[0];
-    parts.push(
-      `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`,
-    );
-    lastIndex = urlPattern.lastIndex;
+    if (match.type === "url") {
+      parts.push(
+        `<a href="${escapeHtml(match.text)}" target="_blank" rel="noopener noreferrer">${escapeHtml(match.text)}</a>`,
+      );
+    } else if (match.type === "mention" && match.pubkey) {
+      const cached = profileCache.get(match.pubkey);
+      const displayName =
+        match.pubkey === selfId
+          ? "You"
+          : (cached?.name ?? shortId(match.pubkey));
+      parts.push(
+        `<a href="/user/${escapeHtml(match.pubkey)}" class="mention">@${escapeHtml(displayName)}</a>`,
+      );
+      if (!cached && match.pubkey !== selfId) {
+        getDisplayName(match.pubkey, selfId);
+      }
+    }
+    lastIndex = match.end;
   }
   if (lastIndex < text.length) {
     parts.push(escapeHtml(text.slice(lastIndex)));

@@ -13,8 +13,8 @@ use iroh_gossip::Gossip;
 use iroh_social_types::{
     ConversationMeta, DM_ALPN, DirectMessage, FollowEntry, FollowerEntry, Interaction,
     InteractionKind, MAX_BLOB_SIZE, MediaAttachment, Post, Profile, StoredMessage, now_millis,
-    short_id, sign_interaction, sign_post, validate_interaction, validate_post, validate_profile,
-    verify_interaction_signature, verify_post_signature,
+    parse_mentions, short_id, sign_interaction, sign_post, validate_interaction, validate_post,
+    validate_profile, verify_interaction_signature, verify_post_signature,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -191,6 +191,36 @@ async fn get_feed(
 }
 
 #[tauri::command]
+async fn get_mentions(
+    state: State<'_, Arc<AppState>>,
+    limit: Option<usize>,
+    before: Option<u64>,
+) -> Result<Vec<Post>, String> {
+    let my_id = state.endpoint.id().to_string();
+    state
+        .storage
+        .get_mentions_feed(&my_id, limit.unwrap_or(20), before)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_unread_mention_count(state: State<'_, Arc<AppState>>) -> Result<u32, String> {
+    let my_id = state.endpoint.id().to_string();
+    state
+        .storage
+        .get_unread_mention_count(&my_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn mark_mentions_read(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state
+        .storage
+        .mark_mentions_read()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_user_posts(
     state: State<'_, Arc<AppState>>,
     pubkey: String,
@@ -218,6 +248,8 @@ fn process_sync_result(
     pubkey: &str,
     result: &sync::SyncResult,
     label: &str,
+    my_id: &str,
+    app_handle: &AppHandle,
 ) -> usize {
     let mut stored = 0;
     for post in &result.posts {
@@ -232,6 +264,9 @@ fn process_sync_result(
         if let Err(e) = storage.insert_post(post) {
             log::error!("[{label}] failed to store post: {e}");
             continue;
+        }
+        if post.author != my_id && parse_mentions(&post.content).contains(&my_id.to_string()) {
+            let _ = app_handle.emit("mentioned-in-post", post);
         }
         stored += 1;
     }
@@ -259,6 +294,7 @@ struct FrontendSyncResult {
 
 #[tauri::command]
 async fn sync_posts(
+    app_handle: AppHandle,
     state: State<'_, Arc<AppState>>,
     pubkey: String,
 ) -> Result<FrontendSyncResult, String> {
@@ -266,11 +302,12 @@ async fn sync_posts(
     let storage = state.storage.clone();
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
 
+    let my_id = state.endpoint.id().to_string();
     let result = sync::sync_from_peer(&endpoint, &storage, target, &pubkey)
         .await
         .map_err(|e| e.to_string())?;
 
-    let stored = process_sync_result(&storage, &pubkey, &result, "sync");
+    let stored = process_sync_result(&storage, &pubkey, &result, "sync", &my_id, &app_handle);
     log::info!(
         "[sync] stored {stored}/{} posts from {} (mode={:?})",
         result.posts.len(),
@@ -303,10 +340,11 @@ async fn get_sync_status(
 
 #[tauri::command]
 async fn fetch_older_posts(
+    app_handle: AppHandle,
     state: State<'_, Arc<AppState>>,
     pubkey: String,
 ) -> Result<FrontendSyncResult, String> {
-    sync_posts(state, pubkey).await
+    sync_posts(app_handle, state, pubkey).await
 }
 
 // -- Interactions (likes/reposts) --
@@ -444,7 +482,11 @@ async fn get_post(state: State<'_, Arc<AppState>>, id: String) -> Result<Option<
 // -- Follows --
 
 #[tauri::command]
-async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<(), String> {
+async fn follow_user(
+    app_handle: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    pubkey: String,
+) -> Result<(), String> {
     let my_id = state.endpoint.id().to_string();
     if pubkey == my_id {
         return Err("cannot follow yourself".to_string());
@@ -472,7 +514,14 @@ async fn follow_user(state: State<'_, Arc<AppState>>, pubkey: String) -> Result<
     let target: iroh::EndpointId = pubkey.parse().map_err(|e| format!("{e}"))?;
     match sync::sync_from_peer(&endpoint, &storage, target, &pubkey).await {
         Ok(result) => {
-            let stored = process_sync_result(&storage, &pubkey, &result, "follow-sync");
+            let stored = process_sync_result(
+                &storage,
+                &pubkey,
+                &result,
+                "follow-sync",
+                &my_id,
+                &app_handle,
+            );
             log::info!(
                 "[follow-sync] stored {stored}/{} posts, {} interactions from {} (mode={:?})",
                 result.posts.len(),
@@ -1014,6 +1063,7 @@ async fn sync_peer_posts(
     endpoint: &Endpoint,
     storage: &Arc<Storage>,
     pubkey: &str,
+    my_id: &str,
     handle: &AppHandle,
 ) {
     let target: iroh::EndpointId = match pubkey.parse() {
@@ -1037,7 +1087,14 @@ async fn sync_peer_posts(
 
         match result {
             Ok(Ok(sync_result)) => {
-                let stored = process_sync_result(storage, pubkey, &sync_result, "startup-sync");
+                let stored = process_sync_result(
+                    storage,
+                    pubkey,
+                    &sync_result,
+                    "startup-sync",
+                    my_id,
+                    handle,
+                );
 
                 if stored > 0 || sync_result.profile.is_some() {
                     let _ = handle.emit("feed-updated", ());
@@ -1251,6 +1308,7 @@ pub fn run() {
                 let sync_storage = storage_clone.clone();
                 let sync_follows = follows.clone();
                 let sync_handle = handle.clone();
+                let sync_my_id = endpoint.id().to_string();
                 tokio::spawn(async move {
                     // Wait for relay to connect before attempting sync
                     log::info!("[startup-sync] waiting for relay connectivity...");
@@ -1280,9 +1338,10 @@ pub fn run() {
                         let st = sync_storage.clone();
                         let hdl = sync_handle.clone();
                         let sem = semaphore.clone();
+                        let mid = sync_my_id.clone();
                         join_set.spawn(async move {
                             let _permit = sem.acquire().await;
-                            sync_peer_posts(&ep, &st, &f.pubkey, &hdl).await;
+                            sync_peer_posts(&ep, &st, &f.pubkey, &mid, &hdl).await;
                         });
                     }
 
@@ -1298,6 +1357,7 @@ pub fn run() {
                 let drip_endpoint = endpoint.clone();
                 let drip_storage = storage_clone.clone();
                 let drip_handle = handle.clone();
+                let drip_my_id = endpoint.id().to_string();
                 tokio::spawn(async move {
                     // Wait for startup sync to mostly complete before starting drip
                     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -1342,6 +1402,8 @@ pub fn run() {
                                         &f.pubkey,
                                         &sync_result,
                                         "drip-sync",
+                                        &drip_my_id,
+                                        &drip_handle,
                                     );
 
                                     if stored > 0 {
@@ -1439,6 +1501,9 @@ pub fn run() {
             create_post,
             delete_post,
             get_feed,
+            get_mentions,
+            get_unread_mention_count,
+            mark_mentions_read,
             get_user_posts,
             sync_posts,
             get_sync_status,

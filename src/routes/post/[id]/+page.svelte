@@ -142,6 +142,7 @@
       <ReplyComposer
         replyToId={post.id}
         replyToAuthor={post.author}
+        {nodeId}
         onsubmitted={loadReplies}
       />
     </div>
