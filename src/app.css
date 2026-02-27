@@ -1,0 +1,463 @@
+/* ==========================================================================
+   Design Tokens
+   ========================================================================== */
+
+:root {
+  /* -- Background surfaces (darkest to lightest) -- */
+  --bg-base: #1a1a2e;
+  --bg-deep: #0f0f23;
+  --bg-surface: #16213e;
+  --bg-elevated: #2a2a4a;
+  --bg-elevated-hover: #3a3a5a;
+
+  /* -- Text -- */
+  --text-primary: #e0e0e0;
+  --text-secondary: #888;
+  --text-tertiary: #666;
+  --text-dim: #555;
+  --text-faint: #444;
+  --text-inactive: #777;
+  --text-post: #e8e8e8;
+  --text-quoted: #aaa;
+
+  /* -- Accent (purple) -- */
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-light: #c4b5fd;
+  --accent-light-hover: #e0d4ff;
+  --accent-medium: #a78bfa;
+
+  /* -- Semantic colors -- */
+  --color-error: #ef4444;
+  --color-error-light: #f87171;
+  --color-error-dark: #dc2626;
+  --color-error-dark-hover: #b91c1c;
+  --color-warning: #f59e0b;
+  --color-success: #22c55e;
+  --color-bookmark: #fbbf24;
+  --color-link: #7dd3fc;
+  --color-delivered: #a7f3d0;
+  --color-read: #60a5fa;
+
+  /* -- Borders -- */
+  --border: #2a2a4a;
+  --border-hover: #3a3a5a;
+  --border-faint: #2a2a4a40;
+  --border-faintest: #2a2a4a20;
+
+  /* -- Alpha variants -- */
+  --accent-light-faint: #c4b5fd40;
+  --accent-light-hover-bg: #c4b5fd12;
+  --color-error-light-border: #f8717140;
+  --color-error-light-bg: #f8717120;
+  --color-error-light-hover-bg: #f8717112;
+  --color-warning-border: #f59e0b40;
+  --color-warning-bg: #f59e0b20;
+  --color-error-border: #ef444440;
+  --color-error-bg-subtle: #ef444410;
+  --color-bookmark-hover-bg: #fbbf2412;
+  --color-warning-bg-subtle: #f59e0b10;
+  --color-error-bg-hover: #ef444415;
+
+  /* -- White alpha variants (for button spinners on accent bg) -- */
+  --white-faint: rgba(255, 255, 255, 0.25);
+
+  /* -- Glow (box-shadow alpha variants) -- */
+  --glow-success: #22c55e80;
+  --glow-error: #ef444480;
+
+  /* -- Danger zone (relay banner, sync failures) -- */
+  --danger-bg: #7f1d1d;
+  --danger-bg-subtle: #1a0a0a;
+  --danger-bg-subtle-hover: #2a0a0a;
+  --danger-border: #991b1b;
+  --danger-text: #fca5a5;
+}
+
+/* ==========================================================================
+   CSS Reset / Base
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--bg-base);
+}
+
+/* Normalize buttons: inherit font-family and remove default styles */
+button {
+  font-family: inherit;
+}
+
+/* ==========================================================================
+   Shared Patterns
+   ========================================================================== */
+
+/* -- Disabled button state (used across all interactive buttons) -- */
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* -- Textarea base (compose boxes: feed, reply, quote, chat) -- */
+
+.textarea-base {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+.textarea-base:focus {
+  outline: none;
+  border-color: var(--accent-medium);
+}
+
+/* -- Section title (thread replies, profile posts) -- */
+
+.section-title {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem;
+}
+
+/* -- Form fields (profile editing, welcome) -- */
+
+.field {
+  margin-bottom: 1rem;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.3rem;
+}
+
+/* -- Hidden file inputs -- */
+
+.hidden-input {
+  display: none;
+}
+
+/* ==========================================================================
+   Global Utility Classes
+   ========================================================================== */
+
+/* -- Loading / Spinner -- */
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3rem;
+  gap: 1rem;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent-medium);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent-light-faint);
+  border-top-color: var(--accent-light);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+
+button .btn-spinner {
+  border-color: var(--white-faint);
+  border-top-color: white;
+}
+
+/* -- Sentinel (infinite scroll trigger) -- */
+
+.sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 1px;
+  padding: 0.5rem 0;
+  color: var(--accent-light);
+  font-size: 0.85rem;
+}
+
+/* -- Modal system -- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.5rem;
+  max-width: 320px;
+  width: 90%;
+}
+
+.modal p {
+  margin: 0 0 1rem;
+  text-align: center;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modal-cancel {
+  flex: 1;
+  background: var(--bg-elevated);
+  color: var(--accent-light);
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.modal-cancel:hover {
+  background: var(--bg-elevated-hover);
+}
+
+.modal-confirm {
+  flex: 1;
+  background: var(--color-error-dark);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-confirm:hover {
+  background: var(--color-error-dark-hover);
+}
+
+.modal-confirm.save {
+  background: var(--accent);
+}
+
+.modal-confirm.save:hover {
+  background: var(--accent-hover);
+}
+
+/* -- Toast notifications -- */
+
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 0.6rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  z-index: 200;
+  animation: toastIn 0.3s ease-out;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.toast.error {
+  border-left: 3px solid var(--color-error);
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* -- Back link (thread view, profile) -- */
+
+.back-link {
+  display: inline-block;
+  color: var(--accent-medium);
+  text-decoration: none;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+/* -- Page title -- */
+
+.page-title {
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  margin: 0 0 0.75rem;
+}
+
+/* -- Filter bar / chips -- */
+
+.filter-bar {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.filter-chip:hover {
+  color: var(--accent-light);
+  border-color: var(--border-hover);
+}
+
+.filter-chip.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* -- Empty state -- */
+
+.empty {
+  text-align: center;
+  color: var(--text-tertiary);
+  padding: 2rem;
+}
+
+.empty .hint {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+/* -- Shared button styles -- */
+
+.btn-accent {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-accent:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-elevated {
+  background: var(--bg-elevated);
+  color: var(--accent-light);
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.btn-elevated:hover:not(:disabled) {
+  background: var(--bg-elevated-hover);
+}
+
+.btn-cancel {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.btn-cancel:hover {
+  color: var(--accent-light);
+  background: var(--bg-elevated-hover);
+}
+
+/* -- Shared keyframes -- */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

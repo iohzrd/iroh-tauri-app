@@ -45,7 +45,7 @@
     </div>
     <div class="qr-url-row">
       <code class="qr-url">{deepLinkUrl}</code>
-      <button class="copy-link-btn" onclick={copyLink}>
+      <button class="btn-elevated copy-link-btn" onclick={copyLink}>
         {copyFeedback ? "Copied!" : "Copy"}
       </button>
     </div>
@@ -62,7 +62,7 @@
   }
 
   .qr-label {
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.85rem;
     margin: 0 0 1rem;
   }
@@ -90,29 +90,19 @@
 
   .qr-url {
     flex: 1;
-    background: #0f0f23;
+    background: var(--bg-deep);
     padding: 0.4rem 0.6rem;
     border-radius: 5px;
     font-size: 0.6rem;
-    color: #7dd3fc;
+    color: var(--color-link);
     word-break: break-all;
     text-align: left;
   }
 
   .copy-link-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
     border-radius: 4px;
     padding: 0.4rem 0.6rem;
     font-size: 0.7rem;
-    cursor: pointer;
-    white-space: nowrap;
     min-width: 48px;
-    text-align: center;
-  }
-
-  .copy-link-btn:hover {
-    background: #3a3a5a;
   }
 </style>

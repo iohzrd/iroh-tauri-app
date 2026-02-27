@@ -296,7 +296,7 @@
           </a>
           <div class="follow-actions">
             <button
-              class="alias-btn"
+              class="btn-elevated"
               onclick={(e) => {
                 e.preventDefault();
                 editingAlias = f.pubkey;
@@ -306,7 +306,7 @@
               {f.alias ? "Edit alias" : "Set alias"}
             </button>
             <button
-              class="copy-btn"
+              class="btn-elevated"
               onclick={() => copyWithFeedback(f.pubkey, f.pubkey)}
             >
               {copyFeedback === f.pubkey ? "Copied!" : "Copy"}
@@ -382,7 +382,7 @@
           </a>
           <div class="follow-actions">
             <button
-              class="copy-btn"
+              class="btn-elevated"
               onclick={() => copyWithFeedback(f.pubkey, f.pubkey)}
             >
               {copyFeedback === f.pubkey ? "Copied!" : "Copy"}
@@ -469,9 +469,8 @@
 <style>
   .tabs {
     display: flex;
-    gap: 0;
     margin-bottom: 1rem;
-    border-bottom: 1px solid #2a2a4a;
+    border-bottom: 1px solid var(--border);
   }
 
   .tab {
@@ -479,7 +478,7 @@
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.9rem;
     font-weight: 600;
     padding: 0.75rem;
@@ -490,21 +489,21 @@
   }
 
   .tab:hover {
-    color: #c4b5fd;
+    color: var(--accent-light);
   }
 
   .tab.active {
-    color: #a78bfa;
-    border-bottom-color: #a78bfa;
+    color: var(--accent-medium);
+    border-bottom-color: var(--accent-medium);
   }
 
   .online-status {
     font-size: 0.7rem;
-    color: #666;
+    color: var(--text-tertiary);
   }
 
   .online-status.online {
-    color: #22c55e;
+    color: var(--color-success);
   }
 
   .add-follow {
@@ -515,22 +514,21 @@
 
   .add-follow input {
     flex: 1;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.6rem 0.75rem;
-    color: #e0e0e0;
-    font-family: inherit;
+    color: var(--text-primary);
     font-size: 0.85rem;
   }
 
   .add-follow input:focus {
     outline: none;
-    border-color: #a78bfa;
+    border-color: var(--accent-medium);
   }
 
   .add-follow button {
-    background: #7c3aed;
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 6px;
@@ -549,29 +547,24 @@
   }
 
   .add-follow button:hover:not(:disabled) {
-    background: #6d28d9;
+    background: var(--accent-hover);
   }
 
-  .add-follow button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .add-follow .scan-btn {
+    background: var(--bg-elevated);
+    color: var(--accent-light);
   }
 
-  .scan-btn {
-    background: #2a2a4a !important;
-    color: #c4b5fd !important;
-  }
-
-  .scan-btn:hover {
-    background: #3a3a5a !important;
+  .add-follow .scan-btn:hover {
+    background: var(--bg-elevated-hover);
   }
 
   .follow-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.75rem 1rem;
     margin-bottom: 0.5rem;
@@ -599,12 +592,12 @@
 
   .display-name {
     font-weight: 600;
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-size: 0.85rem;
   }
 
   code {
-    color: #7dd3fc;
+    color: var(--color-link);
     font-size: 0.85rem;
   }
 
@@ -615,26 +608,10 @@
     flex-shrink: 0;
   }
 
-  .copy-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
-    border-radius: 4px;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.7rem;
-    cursor: pointer;
-    min-width: 48px;
-    text-align: center;
-  }
-
-  .copy-btn:hover {
-    background: #3a3a5a;
-  }
-
   .unfollow-btn {
     background: transparent;
-    color: #f87171;
-    border: 1px solid #f8717140;
+    color: var(--color-error-light);
+    border: 1px solid var(--color-error-light-border);
     border-radius: 4px;
     padding: 0.3rem 0.75rem;
     font-size: 0.8rem;
@@ -642,25 +619,19 @@
   }
 
   .unfollow-btn:hover {
-    background: #f8717120;
-  }
-
-  .empty {
-    text-align: center;
-    color: #666;
-    padding: 2rem;
+    background: var(--color-error-light-bg);
   }
 
   .status {
     text-align: center;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.85rem;
     margin: 0.5rem 0;
   }
 
   .moderation-section {
     margin-top: 1.5rem;
-    border-top: 1px solid #2a2a4a;
+    border-top: 1px solid var(--border);
     padding-top: 0.75rem;
   }
 
@@ -690,17 +661,17 @@
   }
 
   .moderation-header.muted {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 
   .moderation-header.blocked {
-    color: #f87171;
+    color: var(--color-error-light);
   }
 
   .unmute-btn {
     background: transparent;
-    color: #f59e0b;
-    border: 1px solid #f59e0b40;
+    color: var(--color-warning);
+    border: 1px solid var(--color-warning-border);
     border-radius: 4px;
     padding: 0.3rem 0.75rem;
     font-size: 0.8rem;
@@ -708,13 +679,13 @@
   }
 
   .unmute-btn:hover {
-    background: #f59e0b20;
+    background: var(--color-warning-bg);
   }
 
   .unblock-btn {
     background: transparent;
-    color: #f87171;
-    border: 1px solid #f8717140;
+    color: var(--color-error-light);
+    border: 1px solid var(--color-error-light-border);
     border-radius: 4px;
     padding: 0.3rem 0.75rem;
     font-size: 0.8rem;
@@ -722,40 +693,22 @@
   }
 
   .unblock-btn:hover {
-    background: #f8717120;
-  }
-
-  .alias-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
-    border-radius: 4px;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.7rem;
-    cursor: pointer;
-    min-width: 48px;
-    text-align: center;
-  }
-
-  .alias-btn:hover {
-    background: #3a3a5a;
+    background: var(--color-error-light-bg);
   }
 
   .alias-input {
     width: 100%;
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.6rem 0.75rem;
-    color: #e0e0e0;
-    font-family: inherit;
+    color: var(--text-primary);
     font-size: 0.9rem;
-    box-sizing: border-box;
     margin-bottom: 1rem;
   }
 
   .alias-input:focus {
     outline: none;
-    border-color: #a78bfa;
+    border-color: var(--accent-medium);
   }
 </style>

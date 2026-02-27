@@ -542,9 +542,11 @@
       </div>
 
       <div class="edit-actions">
-        <button class="cancel-btn" onclick={cancelEditing}>Cancel</button>
+        <button class="btn-cancel cancel-btn" onclick={cancelEditing}
+          >Cancel</button
+        >
         <button
-          class="save-btn"
+          class="btn-accent save-btn"
           onclick={saveProfile}
           disabled={saving || !isDirty}
         >
@@ -571,17 +573,21 @@
         {/if}
       </div>
       {#if isSelf}
-        <button class="edit-btn" onclick={startEditing}>Edit</button>
+        <button class="btn-elevated edit-btn" onclick={startEditing}
+          >Edit</button
+        >
       {/if}
     </div>
   {/if}
 
   <div class="id-row">
     <code>{pubkey}</code>
-    <button class="copy-btn" onclick={copyNodeId}>
+    <button class="btn-elevated copy-btn" onclick={copyNodeId}>
       {copyFeedback ? "Copied!" : "Copy ID"}
     </button>
-    <button class="copy-btn" onclick={() => (showQr = true)}>QR</button>
+    <button class="btn-elevated copy-btn" onclick={() => (showQr = true)}
+      >QR</button
+    >
   </div>
 
   {#if !isSelf}
@@ -736,18 +742,6 @@
 {/if}
 
 <style>
-  .back-link {
-    display: inline-block;
-    color: #a78bfa;
-    text-decoration: none;
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
-  }
-
-  .back-link:hover {
-    text-decoration: underline;
-  }
-
   .profile-header {
     display: flex;
     align-items: center;
@@ -762,21 +756,21 @@
 
   .profile-info h2 {
     margin: 0;
-    color: #a78bfa;
+    color: var(--accent-medium);
     font-size: 1.1rem;
   }
 
   .bio {
     margin: 0.25rem 0 0;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.85rem;
   }
 
   .private-badge {
     display: inline-block;
     font-size: 0.7rem;
-    color: #f59e0b;
-    border: 1px solid #f59e0b40;
+    color: var(--color-warning);
+    border: 1px solid var(--color-warning-border);
     border-radius: 4px;
     padding: 0.15rem 0.5rem;
     margin-top: 0.25rem;
@@ -790,30 +784,19 @@
   }
 
   code {
-    background: #0f0f23;
+    background: var(--bg-deep);
     padding: 0.5rem 0.75rem;
     border-radius: 6px;
     font-size: 0.7rem;
     word-break: break-all;
-    color: #7dd3fc;
+    color: var(--color-link);
     flex: 1;
   }
 
   .copy-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
     border-radius: 4px;
     padding: 0.4rem 0.75rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-    white-space: nowrap;
     min-width: 52px;
-    text-align: center;
-  }
-
-  .copy-btn:hover {
-    background: #3a3a5a;
   }
 
   .action-row {
@@ -824,7 +807,7 @@
 
   .follow-toggle {
     flex: 1;
-    background: #7c3aed;
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 6px;
@@ -839,8 +822,8 @@
   }
 
   .message-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
+    background: var(--bg-elevated);
+    color: var(--accent-light);
     border: none;
     border-radius: 6px;
     padding: 0.5rem 1rem;
@@ -853,26 +836,21 @@
   }
 
   .message-btn:hover {
-    background: #3a3a5a;
+    background: var(--bg-elevated-hover);
   }
 
   .follow-toggle:hover:not(:disabled) {
-    background: #6d28d9;
+    background: var(--accent-hover);
   }
 
   .follow-toggle.following {
     background: transparent;
-    color: #f87171;
-    border: 1px solid #f8717140;
+    color: var(--color-error-light);
+    border: 1px solid var(--color-error-light-border);
   }
 
   .follow-toggle.following:hover:not(:disabled) {
-    background: #f8717120;
-  }
-
-  .follow-toggle:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    background: var(--color-error-light-bg);
   }
 
   .moderation-row {
@@ -884,13 +862,12 @@
   .mod-btn {
     flex: 1;
     background: transparent;
-    border: 1px solid #2a2a4a;
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.35rem;
     font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
-    font-family: inherit;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -902,98 +879,54 @@
   }
 
   .mod-btn.mute {
-    color: #888;
+    color: var(--text-secondary);
   }
 
   .mod-btn.mute:hover:not(:disabled) {
-    color: #f59e0b;
-    border-color: #f59e0b40;
-    background: #f59e0b10;
+    color: var(--color-warning);
+    border-color: var(--color-warning-border);
+    background: var(--color-warning-bg-subtle);
   }
 
   .mod-btn.mute.active {
-    color: #f59e0b;
-    border-color: #f59e0b40;
+    color: var(--color-warning);
+    border-color: var(--color-warning-border);
   }
 
   .mod-btn.mute.active:hover:not(:disabled) {
-    background: #f59e0b10;
+    background: var(--color-warning-bg-subtle);
   }
 
   .mod-btn.block {
-    color: #888;
+    color: var(--text-secondary);
   }
 
   .mod-btn.block:hover:not(:disabled) {
-    color: #ef4444;
-    border-color: #ef444440;
-    background: #ef444410;
+    color: var(--color-error);
+    border-color: var(--color-error-border);
+    background: var(--color-error-bg-subtle);
   }
 
   .mod-btn.block.active {
-    color: #ef4444;
-    border-color: #ef444440;
+    color: var(--color-error);
+    border-color: var(--color-error-border);
   }
 
   .mod-btn.block.active:hover:not(:disabled) {
-    background: #ef444410;
-  }
-
-  .mod-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    background: var(--color-error-bg-subtle);
   }
 
   .filter-bar {
-    display: flex;
-    gap: 0.4rem;
     margin-bottom: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .filter-chip {
-    background: #2a2a4a;
-    color: #888;
-    border: 1px solid transparent;
-    border-radius: 999px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-    font-family: inherit;
-    transition:
-      background 0.2s,
-      color 0.2s,
-      border-color 0.2s;
-  }
-
-  .filter-chip:hover {
-    color: #c4b5fd;
-    border-color: #3a3a5a;
-  }
-
-  .filter-chip.active {
-    background: #7c3aed;
-    color: white;
-    border-color: #7c3aed;
   }
 
   .section-title {
-    color: #888;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin: 0 0 0.75rem;
-  }
-
-  .empty {
-    text-align: center;
-    color: #666;
-    padding: 2rem;
+    margin-bottom: 0.75rem;
   }
 
   .sync-info {
     font-size: 0.7rem;
-    color: #666;
+    color: var(--text-tertiary);
     font-weight: 400;
     text-transform: none;
     letter-spacing: normal;
@@ -1002,43 +935,29 @@
 
   .offline-notice {
     text-align: center;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.8rem;
     padding: 0.75rem;
-    border-top: 1px solid #2a2a4a;
+    border-top: 1px solid var(--border);
     margin-top: 0.5rem;
   }
 
   .edit-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
-    border-radius: 6px;
     padding: 0.4rem 0.85rem;
     font-size: 0.8rem;
     font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
     flex-shrink: 0;
-    transition:
-      background 0.15s,
-      color 0.15s;
-  }
-
-  .edit-btn:hover {
-    background: #3a3a5a;
-    color: #e0d4ff;
   }
 
   .edit-heading {
-    color: #a78bfa;
+    color: var(--accent-medium);
     margin: 0 0 1rem;
     font-size: 1.1rem;
   }
 
   .edit-form {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1.25rem;
     margin-bottom: 1rem;
@@ -1049,12 +968,8 @@
   }
 
   .field-label {
-    display: block;
-    font-size: 0.8rem;
-    color: #888;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 0.25rem;
   }
 
   .avatar-row {
@@ -1091,8 +1006,8 @@
   }
 
   .avatar-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
+    background: var(--bg-elevated);
+    color: var(--accent-light);
     border: none;
     border-radius: 4px;
     padding: 0.3rem 0.75rem;
@@ -1101,40 +1016,33 @@
   }
 
   .avatar-btn:hover:not(:disabled) {
-    background: #3a3a5a;
-  }
-
-  .avatar-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    background: var(--bg-elevated-hover);
   }
 
   .avatar-btn.remove {
-    color: #f87171;
+    color: var(--color-error-light);
   }
 
   .avatar-btn.remove:hover {
-    background: #f8717120;
+    background: var(--color-error-light-bg);
   }
 
   .edit-form input:not([type="checkbox"]),
   .edit-form textarea {
     width: 100%;
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.6rem 0.75rem;
-    color: #e0e0e0;
-    font-family: inherit;
+    color: var(--text-primary);
     font-size: 0.9rem;
-    box-sizing: border-box;
     resize: vertical;
   }
 
   .edit-form input:not([type="checkbox"]):focus,
   .edit-form textarea:focus {
     outline: none;
-    border-color: #a78bfa;
+    border-color: var(--accent-medium);
   }
 
   .toggle-row {
@@ -1160,20 +1068,20 @@
     display: block;
     width: 40px;
     height: 22px;
-    background: #2a2a4a;
+    background: var(--bg-elevated);
     border-radius: 11px;
     transition: background 0.2s;
   }
 
   .toggle-switch.on .toggle-track {
-    background: #7c3aed;
+    background: var(--accent);
   }
 
   .toggle-thumb {
     display: block;
     width: 16px;
     height: 16px;
-    background: #888;
+    background: var(--text-secondary);
     border-radius: 50%;
     position: relative;
     top: 3px;
@@ -1190,13 +1098,13 @@
 
   .toggle-text {
     font-size: 0.9rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
   }
 
   .field-hint {
     margin: 0.25rem 0 0;
     font-size: 0.75rem;
-    color: #666;
+    color: var(--text-tertiary);
   }
 
   .edit-actions {
@@ -1207,40 +1115,13 @@
 
   .cancel-btn {
     flex: 1;
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
-    border-radius: 6px;
     padding: 0.6rem;
     font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .cancel-btn:hover {
-    background: #3a3a5a;
   }
 
   .save-btn {
     flex: 1;
-    background: #7c3aed;
-    color: white;
-    border: none;
-    border-radius: 6px;
     padding: 0.6rem;
     font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .save-btn:hover:not(:disabled) {
-    background: #6d28d9;
-  }
-
-  .save-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 </style>

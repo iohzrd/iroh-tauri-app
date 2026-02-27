@@ -374,7 +374,7 @@
 <input
   type="file"
   multiple
-  class="hidden-file-input"
+  class="hidden-input"
   bind:this={fileInput}
   onchange={handleFiles}
 />
@@ -382,7 +382,7 @@
   type="file"
   accept="image/*,video/*"
   capture="environment"
-  class="hidden-file-input"
+  class="hidden-input"
   bind:this={cameraInput}
   onchange={handleFiles}
 />
@@ -565,7 +565,7 @@
         rows="1"
       ></textarea>
       <button
-        class="send-btn"
+        class="btn-accent send-btn"
         onclick={sendMessage}
         disabled={(!messageText.trim() && attachments.length === 0) || sending}
       >
@@ -576,10 +576,6 @@
 {/if}
 
 <style>
-  .hidden-file-input {
-    display: none;
-  }
-
   .chat-layout {
     display: flex;
     flex-direction: column;
@@ -592,20 +588,20 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid #2a2a4a;
-    background: #1a1a2e;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-base);
     flex-shrink: 0;
   }
 
   .back-btn {
-    color: #a78bfa;
+    color: var(--accent-medium);
     text-decoration: none;
     font-size: 1.2rem;
     padding: 0.25rem;
   }
 
   .back-btn:hover {
-    color: #c4b5fd;
+    color: var(--accent-light);
   }
 
   .header-info {
@@ -616,7 +612,7 @@
   .header-name {
     font-weight: 600;
     font-size: 0.95rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
   }
 
   .messages-container {
@@ -634,7 +630,7 @@
     justify-content: center;
     gap: 0.4rem;
     padding: 0.5rem;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.8rem;
   }
 
@@ -645,8 +641,8 @@
   }
 
   .date-separator span {
-    background: #2a2a4a;
-    color: #888;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
     font-size: 0.7rem;
     padding: 0.2rem 0.75rem;
     border-radius: 999px;
@@ -672,15 +668,15 @@
   }
 
   .sent .message-bubble {
-    background: #7c3aed;
+    background: var(--accent);
     color: white;
     border-bottom-right-radius: 4px;
   }
 
   .received .message-bubble {
-    background: #16213e;
-    color: #e0e0e0;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
     border-bottom-left-radius: 4px;
   }
 
@@ -720,7 +716,7 @@
   }
 
   .audio-filename {
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-size: 0.75rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -737,18 +733,17 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    background: #2a2a4a;
-    border: 1px solid #3a3a5a;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hover);
     border-radius: 6px;
     padding: 0.4rem 0.6rem;
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-size: 0.8rem;
     cursor: pointer;
-    font-family: inherit;
   }
 
   .file-attachment:hover {
-    background: #3a3a5a;
+    background: var(--bg-elevated-hover);
   }
 
   .file-icon {
@@ -763,7 +758,7 @@
   }
 
   .file-size {
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.7rem;
     flex-shrink: 0;
   }
@@ -787,39 +782,30 @@
   }
 
   .delivery-status.delivered {
-    color: #a7f3d0;
-  }
-
-  .sent .delivery-status.delivered {
-    color: #a7f3d0;
+    color: var(--color-delivered);
   }
 
   .delivery-status.read {
-    color: #60a5fa;
-  }
-
-  .sent .delivery-status.read {
-    color: #60a5fa;
+    color: var(--color-read);
   }
 
   .failed-msg .message-bubble {
-    border: 1px solid #7f1d1d;
+    border: 1px solid var(--danger-bg);
   }
 
   .delivery-status.failed {
     background: none;
     border: none;
-    color: #f87171;
+    color: var(--color-error-light);
     font-size: 0.6rem;
     cursor: pointer;
     padding: 0;
-    font-family: inherit;
     text-decoration: underline;
     text-decoration-style: dotted;
   }
 
   .delivery-status.retrying {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 
   .typing-indicator {
@@ -827,13 +813,13 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.3rem 0;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.75rem;
     font-style: italic;
   }
 
   .typing-name {
-    color: #a78bfa;
+    color: var(--accent-medium);
     font-style: normal;
     font-weight: 600;
   }
@@ -848,7 +834,7 @@
     width: 4px;
     height: 4px;
     border-radius: 50%;
-    background: #888;
+    background: var(--text-secondary);
     animation: bounce 1.2s infinite;
   }
 
@@ -876,24 +862,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.9rem;
   }
 
   .send-error {
-    background: #f8717120;
-    color: #f87171;
+    background: var(--color-error-light-bg);
+    color: var(--color-error-light);
     font-size: 0.8rem;
     padding: 0.4rem 1rem;
-    border-top: 1px solid #f8717140;
+    border-top: 1px solid var(--color-error-light-border);
   }
 
   .attachment-preview {
     display: flex;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    border-top: 1px solid #2a2a4a;
-    background: #16213e;
+    border-top: 1px solid var(--border);
+    background: var(--bg-surface);
     overflow-x: auto;
     flex-shrink: 0;
   }
@@ -908,7 +894,7 @@
     height: 60px;
     object-fit: cover;
     border-radius: 6px;
-    border: 1px solid #2a2a4a;
+    border: 1px solid var(--border);
   }
 
   .att-file {
@@ -917,10 +903,10 @@
     justify-content: center;
     width: 60px;
     height: 60px;
-    background: #2a2a4a;
+    background: var(--bg-elevated);
     border-radius: 6px;
     font-size: 0.6rem;
-    color: #888;
+    color: var(--text-secondary);
     text-align: center;
     padding: 4px;
     word-break: break-all;
@@ -934,7 +920,7 @@
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #f87171;
+    background: var(--color-error-light);
     color: white;
     border: none;
     font-size: 0.6rem;
@@ -943,7 +929,6 @@
     align-items: center;
     justify-content: center;
     line-height: 1;
-    font-family: inherit;
   }
 
   .compose-bar {
@@ -951,16 +936,16 @@
     align-items: flex-end;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
-    border-top: 1px solid #2a2a4a;
-    background: #1a1a2e;
+    border-top: 1px solid var(--border);
+    background: var(--bg-base);
     flex-shrink: 0;
   }
 
   .attach-btn {
     background: none;
-    border: 1px solid #2a2a4a;
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: #a78bfa;
+    color: var(--accent-medium);
     font-size: 1.1rem;
     width: 36px;
     height: 36px;
@@ -969,28 +954,21 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    font-family: inherit;
   }
 
   .attach-btn:hover:not(:disabled) {
-    background: #2a2a4a;
-    color: #c4b5fd;
-  }
-
-  .attach-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+    background: var(--bg-elevated);
+    color: var(--accent-light);
   }
 
   .compose-input {
     flex: 1;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
     font-size: 0.9rem;
-    font-family: inherit;
     resize: none;
     min-height: 36px;
     max-height: 120px;
@@ -999,32 +977,14 @@
   }
 
   .compose-input:focus {
-    border-color: #7c3aed;
+    border-color: var(--accent);
   }
 
   .compose-input::placeholder {
-    color: #555;
+    color: var(--text-dim);
   }
 
   .send-btn {
-    background: #7c3aed;
-    color: white;
-    border: none;
     border-radius: 8px;
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    font-family: inherit;
-  }
-
-  .send-btn:hover:not(:disabled) {
-    background: #6d28d9;
-  }
-
-  .send-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
   }
 </style>

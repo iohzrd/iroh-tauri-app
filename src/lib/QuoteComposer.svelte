@@ -90,7 +90,7 @@
   }
 </script>
 
-<div class="quote-composer" style="position: relative;">
+<div class="quote-composer">
   <div class="quoted-preview">
     {#await getDisplayName(quotedPost.author, nodeId)}
       <span class="quote-author">{shortId(quotedPost.author)}</span>
@@ -111,6 +111,7 @@
     onselect={insertMention}
   />
   <textarea
+    class="textarea-base"
     bind:value={content}
     placeholder="Add your commentary (optional)..."
     rows="2"
@@ -118,8 +119,8 @@
     oninput={handleMentionInput}
   ></textarea>
   <div class="quote-actions">
-    <button class="cancel-btn" onclick={oncancel}>Cancel</button>
-    <button class="quote-btn" onclick={submit} disabled={posting}>
+    <button class="btn-cancel" onclick={oncancel}>Cancel</button>
+    <button class="btn-accent quote-btn" onclick={submit} disabled={posting}>
       {posting ? "Posting..." : "Quote"}
     </button>
   </div>
@@ -127,9 +128,10 @@
 
 <style>
   .quote-composer {
+    position: relative;
     margin-top: 0.6rem;
     padding-top: 0.6rem;
-    border-top: 1px solid #2a2a4a40;
+    border-top: 1px solid var(--border-faint);
   }
 
   .quoted-preview {
@@ -138,20 +140,20 @@
     gap: 0.2rem;
     padding: 0.5rem 0.7rem;
     margin-bottom: 0.5rem;
-    background: #0f0f23;
-    border-left: 2px solid #7c3aed;
+    background: var(--bg-deep);
+    border-left: 2px solid var(--accent);
     border-radius: 0 6px 6px 0;
     font-size: 0.8rem;
   }
 
   .quote-author {
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-weight: 600;
     font-size: 0.75rem;
   }
 
   .quote-text {
-    color: #888;
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -159,26 +161,7 @@
 
   .quote-text.empty {
     font-style: italic;
-    color: #555;
-  }
-
-  textarea {
-    width: 100%;
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    padding: 0.6rem 0.75rem;
-    color: #e0e0e0;
-    font-family: inherit;
-    font-size: 0.85rem;
-    resize: vertical;
-    box-sizing: border-box;
-    transition: border-color 0.2s;
-  }
-
-  textarea:focus {
-    outline: none;
-    border-color: #a78bfa;
+    color: var(--text-dim);
   }
 
   .quote-actions {
@@ -188,44 +171,8 @@
     justify-content: flex-end;
   }
 
-  .cancel-btn {
-    background: #2a2a4a;
-    color: #888;
-    border: none;
-    border-radius: 6px;
-    padding: 0.35rem 0.85rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-    font-family: inherit;
-    transition:
-      color 0.15s,
-      background 0.15s;
-  }
-
-  .cancel-btn:hover {
-    color: #c4b5fd;
-    background: #3a3a5a;
-  }
-
   .quote-btn {
-    background: #7c3aed;
-    color: white;
-    border: none;
-    border-radius: 6px;
     padding: 0.35rem 0.85rem;
     font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s;
-  }
-
-  .quote-btn:hover:not(:disabled) {
-    background: #6d28d9;
-  }
-
-  .quote-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 </style>

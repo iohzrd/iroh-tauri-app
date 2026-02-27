@@ -82,7 +82,7 @@
 <input
   type="file"
   accept="image/*"
-  class="hidden"
+  class="hidden-input"
   bind:this={fileInput}
   onchange={handleAvatarUpload}
 />
@@ -169,10 +169,6 @@
 </div>
 
 <style>
-  .hidden {
-    display: none;
-  }
-
   .welcome {
     display: flex;
     flex-direction: column;
@@ -190,24 +186,24 @@
 
   h1 {
     font-size: 1.8rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
     margin: 0 0 0.5rem;
   }
 
   h2 {
     font-size: 1.3rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
     margin: 0 0 1.5rem;
   }
 
   .subtitle {
-    color: #a78bfa;
+    color: var(--accent-medium);
     font-size: 0.95rem;
     margin: 0 0 1rem;
   }
 
   .desc {
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.85rem;
     line-height: 1.6;
     margin: 0 0 1.5rem;
@@ -218,7 +214,7 @@
   }
 
   .label {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -226,23 +222,23 @@
   }
 
   .node-id {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.4rem 0.8rem;
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-family: monospace;
     font-size: 0.8rem;
     cursor: pointer;
   }
 
   .node-id:hover {
-    background: #1e2a4a;
+    background: var(--bg-elevated);
   }
 
   .copied {
     display: block;
-    color: #22c55e;
+    color: var(--color-success);
     font-size: 0.7rem;
     margin-top: 0.3rem;
   }
@@ -259,8 +255,8 @@
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    border: 2px dashed #3a3a5a;
-    background: #16213e;
+    border: 2px dashed var(--border-hover);
+    background: var(--bg-surface);
     cursor: pointer;
     overflow: hidden;
     display: flex;
@@ -269,7 +265,7 @@
   }
 
   .avatar-upload:hover {
-    border-color: #7c3aed;
+    border-color: var(--accent);
   }
 
   .avatar-upload img {
@@ -279,46 +275,37 @@
   }
 
   .avatar-placeholder {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 1.5rem;
   }
 
   .avatar-hint {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.75rem;
   }
 
   .field {
     display: block;
     text-align: left;
-    margin-bottom: 1rem;
-  }
-
-  .field-label {
-    display: block;
-    color: #888;
-    font-size: 0.8rem;
-    margin-bottom: 0.3rem;
   }
 
   .field input,
   .field textarea {
     width: 100%;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
     font-size: 0.9rem;
     font-family: inherit;
     outline: none;
-    box-sizing: border-box;
     transition: border-color 0.2s;
   }
 
   .field input:focus,
   .field textarea:focus {
-    border-color: #7c3aed;
+    border-color: var(--accent);
   }
 
   .field textarea {
@@ -328,7 +315,7 @@
 
   .field input::placeholder,
   .field textarea::placeholder {
-    color: #555;
+    color: var(--text-dim);
   }
 
   .actions {
@@ -339,7 +326,7 @@
 
   .primary-btn {
     flex: 1;
-    background: #7c3aed;
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 8px;
@@ -347,35 +334,28 @@
     font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
-    font-family: inherit;
     transition: background 0.15s;
   }
 
   .primary-btn:hover:not(:disabled) {
-    background: #6d28d9;
-  }
-
-  .primary-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    background: var(--accent-hover);
   }
 
   .secondary-btn {
     background: none;
-    border: 1px solid #3a3a5a;
-    color: #888;
+    border: 1px solid var(--border-hover);
+    color: var(--text-secondary);
     border-radius: 8px;
     padding: 0.7rem 1.5rem;
     font-size: 0.95rem;
     cursor: pointer;
-    font-family: inherit;
     transition:
       color 0.15s,
       border-color 0.15s;
   }
 
   .secondary-btn:hover {
-    color: #c4b5fd;
-    border-color: #7c3aed;
+    color: var(--accent-light);
+    border-color: var(--accent);
   }
 </style>

@@ -87,7 +87,7 @@
     border-radius: 8px;
     max-height: 400px;
     object-fit: contain;
-    background: #0f0f23;
+    background: var(--bg-deep);
     display: block;
   }
 
@@ -98,8 +98,8 @@
   }
 
   .media-audio {
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     display: flex;
@@ -108,7 +108,7 @@
   }
 
   .audio-filename {
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-size: 0.8rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -122,41 +122,40 @@
   }
 
   .media-placeholder {
-    background: #0f0f23;
+    background: var(--bg-deep);
     border-radius: 8px;
     padding: 2rem;
     text-align: center;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.8rem;
   }
 
   .media-file {
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.75rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-size: 0.85rem;
     cursor: pointer;
     width: 100%;
-    font-family: inherit;
     transition: border-color 0.2s;
   }
 
   .media-file:hover {
-    border-color: #a78bfa;
+    border-color: var(--accent-medium);
   }
 
   .file-size {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.75rem;
   }
 
   .download-label {
-    color: #7dd3fc;
+    color: var(--color-link);
     font-size: 0.75rem;
   }
 </style>

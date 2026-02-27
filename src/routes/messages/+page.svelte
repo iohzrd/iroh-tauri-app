@@ -86,7 +86,7 @@
       onkeydown={(e) => e.key === "Enter" && startConversation()}
     />
     <button
-      class="new-btn"
+      class="btn-accent new-btn"
       onclick={startConversation}
       disabled={!newPubkey.trim()}
     >
@@ -144,9 +144,7 @@
 
 <style>
   .page-title {
-    margin: 0 0 1rem;
-    color: #a78bfa;
-    font-size: 1.1rem;
+    color: var(--accent-medium);
   }
 
   .new-conversation {
@@ -157,62 +155,28 @@
 
   .new-input {
     flex: 1;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
     font-size: 0.8rem;
-    font-family: inherit;
     outline: none;
     transition: border-color 0.2s;
   }
 
   .new-input:focus {
-    border-color: #7c3aed;
+    border-color: var(--accent);
   }
 
   .new-input::placeholder {
-    color: #555;
-  }
-
-  .new-btn {
-    background: #7c3aed;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .new-btn:hover:not(:disabled) {
-    background: #6d28d9;
-  }
-
-  .new-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+    color: var(--text-dim);
   }
 
   .new-error {
-    color: #f87171;
+    color: var(--color-error-light);
     font-size: 0.8rem;
     margin: -0.5rem 0 0.75rem;
-  }
-
-  .empty {
-    text-align: center;
-    color: #666;
-    padding: 3rem 1rem;
-  }
-
-  .hint {
-    font-size: 0.85rem;
-    color: #555;
-    margin-top: 0.5rem;
   }
 
   .conversation-list {
@@ -233,7 +197,7 @@
   }
 
   .conversation-row:hover {
-    background: #16213e;
+    background: var(--bg-surface);
   }
 
   .conversation-info {
@@ -251,14 +215,14 @@
   .conversation-name {
     font-weight: 600;
     font-size: 0.9rem;
-    color: #e0e0e0;
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .conversation-time {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.75rem;
     flex-shrink: 0;
   }
@@ -271,7 +235,7 @@
   }
 
   .preview-text {
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.8rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -281,11 +245,11 @@
 
   .empty-preview {
     font-style: italic;
-    color: #555;
+    color: var(--text-dim);
   }
 
   .unread-badge {
-    background: #7c3aed;
+    background: var(--accent);
     color: white;
     font-size: 0.7rem;
     font-weight: 700;

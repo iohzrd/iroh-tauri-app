@@ -155,7 +155,7 @@
   .scanner-viewfinder {
     width: 250px;
     height: 250px;
-    border: 3px solid #a78bfa;
+    border: 3px solid var(--accent-medium);
     border-radius: 12px;
     flex-shrink: 0;
   }
@@ -193,7 +193,7 @@
 
   .scanner-label {
     margin: 0 0 0.75rem;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.85rem;
     text-align: center;
   }

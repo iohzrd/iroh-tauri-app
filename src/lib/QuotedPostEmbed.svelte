@@ -64,8 +64,8 @@
     display: block;
     margin-top: 0.6rem;
     padding: 0.6rem 0.75rem;
-    background: #0f0f23;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
     border-radius: 8px;
     text-decoration: none;
     color: inherit;
@@ -73,11 +73,11 @@
   }
 
   .quoted-post:hover {
-    border-color: #3a3a5a;
+    border-color: var(--border-hover);
   }
 
   .quoted-post.unavailable {
-    color: #555;
+    color: var(--text-dim);
     font-size: 0.8rem;
     font-style: italic;
   }
@@ -88,11 +88,11 @@
     gap: 0.4rem;
     margin-bottom: 0.3rem;
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-secondary);
   }
 
   .quoted-author {
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-weight: 600;
   }
 
@@ -100,7 +100,7 @@
     margin: 0;
     font-size: 0.85rem;
     line-height: 1.4;
-    color: #aaa;
+    color: var(--text-quoted);
     white-space: pre-wrap;
     word-break: break-word;
   }

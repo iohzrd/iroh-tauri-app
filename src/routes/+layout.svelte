@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "../app.css";
   import { page } from "$app/state";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -255,20 +256,6 @@
 </div>
 
 <style>
-  :global(body) {
-    margin: 0;
-    font-family:
-      "Inter",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-    font-size: 15px;
-    line-height: 1.5;
-    color: #e0e0e0;
-    background-color: #1a1a2e;
-  }
-
   .app {
     max-width: 640px;
     margin: 0 auto;
@@ -279,12 +266,11 @@
 
   nav {
     display: flex;
-    gap: 0;
     align-items: center;
-    border-bottom: 1px solid #2a2a4a;
+    border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    background: #1a1a2e;
+    background: var(--bg-base);
     z-index: 10;
     padding-top: env(safe-area-inset-top);
   }
@@ -293,7 +279,7 @@
     flex: 1;
     text-align: center;
     padding: 0.7rem 0.25rem;
-    color: #777;
+    color: var(--text-inactive);
     text-decoration: none;
     font-weight: 600;
     font-size: 0.8rem;
@@ -305,16 +291,16 @@
   }
 
   nav a:hover {
-    color: #c4b5fd;
+    color: var(--accent-light);
   }
 
   nav a.active {
-    color: #a78bfa;
-    border-bottom-color: #a78bfa;
+    color: var(--accent-medium);
+    border-bottom-color: var(--accent-medium);
   }
 
   .unread-badge {
-    background: #7c3aed;
+    background: var(--accent);
     color: white;
     font-size: 0.55rem;
     font-weight: 700;
@@ -344,13 +330,13 @@
   }
 
   .status-dot.connected {
-    background: #22c55e;
-    box-shadow: 0 0 4px #22c55e80;
+    background: var(--color-success);
+    box-shadow: 0 0 4px var(--glow-success);
   }
 
   .status-dot.disconnected {
-    background: #ef4444;
-    box-shadow: 0 0 4px #ef444480;
+    background: var(--color-error);
+    box-shadow: 0 0 4px var(--glow-error);
   }
 
   .relay-banner {
@@ -358,9 +344,9 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    background: #7f1d1d;
-    border-bottom: 1px solid #991b1b;
-    color: #fca5a5;
+    background: var(--danger-bg);
+    border-bottom: 1px solid var(--danger-border);
+    color: var(--danger-text);
     font-size: 0.8rem;
     font-weight: 500;
   }
@@ -369,7 +355,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #ef4444;
+    background: var(--color-error);
     flex-shrink: 0;
     animation: pulse-dot 2s infinite;
   }
@@ -387,155 +373,5 @@
   main {
     padding: 1rem;
     flex: 1;
-  }
-
-  :global(.loading) {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 3rem;
-    gap: 1rem;
-    color: #888;
-  }
-
-  :global(.spinner) {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #2a2a4a;
-    border-top-color: #a78bfa;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes -global-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  :global(.btn-spinner) {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid #c4b5fd40;
-    border-top-color: #c4b5fd;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    vertical-align: middle;
-  }
-
-  :global(button .btn-spinner) {
-    border-color: #ffffff40;
-    border-top-color: #fff;
-  }
-
-  :global(.sentinel) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    width: 100%;
-    min-height: 1px;
-    padding: 0.5rem 0;
-    color: #c4b5fd;
-    font-size: 0.85rem;
-  }
-
-  :global(.modal-overlay) {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-  }
-
-  :global(.modal) {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
-    border-radius: 10px;
-    padding: 1.5rem;
-    max-width: 320px;
-    width: 90%;
-  }
-
-  :global(.modal p) {
-    margin: 0 0 1rem;
-    text-align: center;
-  }
-
-  :global(.modal-actions) {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  :global(.modal-cancel) {
-    flex: 1;
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem;
-    font-size: 0.9rem;
-    cursor: pointer;
-  }
-
-  :global(.modal-cancel:hover) {
-    background: #3a3a5a;
-  }
-
-  :global(.modal-confirm) {
-    flex: 1;
-    background: #dc2626;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  :global(.modal-confirm:hover) {
-    background: #b91c1c;
-  }
-
-  :global(.modal-confirm.save) {
-    background: #7c3aed;
-  }
-
-  :global(.modal-confirm.save:hover) {
-    background: #6d28d9;
-  }
-
-  :global(.toast) {
-    position: fixed;
-    bottom: 2rem;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #2a2a4a;
-    color: #e0e0e0;
-    padding: 0.6rem 1.25rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    z-index: 200;
-    animation: toastIn 0.3s ease-out;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  }
-
-  :global(.toast.error) {
-    border-left: 3px solid #ef4444;
-  }
-
-  @keyframes toastIn {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
   }
 </style>

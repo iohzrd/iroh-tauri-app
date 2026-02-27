@@ -53,12 +53,12 @@
     display: block;
     margin-bottom: 0.35rem;
     font-size: 0.75rem;
-    color: #666;
+    color: var(--text-tertiary);
     text-decoration: none;
   }
 
   .reply-context:hover {
-    color: #a78bfa;
+    color: var(--accent-medium);
     text-decoration: underline;
   }
 
@@ -68,33 +68,33 @@
     gap: 0.3rem;
     margin-bottom: 0.5rem;
     padding: 0.35rem 0.6rem;
-    background: #0f0f23;
-    border-left: 2px solid #3a3a5a;
+    background: var(--bg-deep);
+    border-left: 2px solid var(--border-hover);
     border-radius: 0 6px 6px 0;
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-secondary);
     text-decoration: none;
     overflow: hidden;
   }
 
   .reply-context-block:hover {
-    border-left-color: #a78bfa;
-    color: #a78bfa;
+    border-left-color: var(--accent-medium);
+    color: var(--accent-medium);
   }
 
   .reply-icon {
     flex-shrink: 0;
-    color: #666;
+    color: var(--text-tertiary);
   }
 
   .reply-author {
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-weight: 600;
     flex-shrink: 0;
   }
 
   .reply-preview {
-    color: #666;
+    color: var(--text-tertiary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

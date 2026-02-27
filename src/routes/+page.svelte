@@ -433,14 +433,14 @@
       <span class="label">You</span>
       <code>{shortId(nodeId)}</code>
       <button
-        class="copy-btn"
+        class="btn-elevated copy-btn"
         onclick={() => copyWithFeedback(nodeId, "node-id")}
       >
         {copyFeedback === "node-id" ? "Copied!" : "Copy ID"}
       </button>
     </div>
 
-    <div class="compose" style="position: relative;">
+    <div class="compose">
       <MentionAutocomplete
         bind:this={mentionAutocomplete}
         query={mentionQuery}
@@ -488,14 +488,14 @@
       <div class="compose-actions">
         {#if isMobile}
           <button
-            class="attach-btn"
+            class="btn-elevated attach-btn"
             onclick={() => cameraInput.click()}
             disabled={uploading}
           >
             {uploading ? "..." : "Camera"}
           </button>
           <button
-            class="attach-btn"
+            class="btn-elevated attach-btn"
             onclick={() => fileInput.click()}
             disabled={uploading}
           >
@@ -503,7 +503,7 @@
           </button>
         {:else}
           <button
-            class="attach-btn"
+            class="btn-elevated attach-btn"
             onclick={() => fileInput.click()}
             disabled={uploading}
           >
@@ -527,7 +527,7 @@
           hidden
         />
         <button
-          class="post-btn"
+          class="btn-accent post-btn"
           onclick={submitPost}
           disabled={posting || (!newPost.trim() && attachments.length === 0)}
         >
@@ -658,7 +658,7 @@
 <style>
   .divider {
     border: none;
-    border-top: 1px solid #2a2a4a;
+    border-top: 1px solid var(--border);
     margin: 0.25rem 0 1rem;
   }
 
@@ -667,14 +667,14 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 0.85rem;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 10px;
     margin-bottom: 1rem;
   }
 
   .node-id .label {
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -682,54 +682,39 @@
   }
 
   .node-id code {
-    color: #7dd3fc;
+    color: var(--color-link);
     font-size: 0.8rem;
     flex: 1;
     font-family: "SF Mono", "Fira Code", monospace;
   }
 
   .copy-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
-    border-radius: 6px;
     padding: 0.25rem 0.6rem;
     font-size: 0.7rem;
     font-weight: 500;
-    cursor: pointer;
     min-width: 52px;
-    text-align: center;
-    transition:
-      background 0.15s,
-      color 0.15s;
-  }
-
-  .copy-btn:hover {
-    background: #3a3a5a;
-    color: #e0d4ff;
   }
 
   .compose {
+    position: relative;
     margin-bottom: 1.25rem;
   }
 
   .compose textarea {
     width: 100%;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 0.75rem;
-    color: #e0e0e0;
-    font-family: inherit;
+    color: var(--text-primary);
     font-size: 0.95rem;
     resize: vertical;
-    box-sizing: border-box;
     transition: border-color 0.2s;
   }
 
   .compose textarea:focus {
     outline: none;
-    border-color: #a78bfa;
+    border-color: var(--accent-medium);
   }
 
   .compose-meta {
@@ -741,16 +726,16 @@
 
   .hint {
     font-size: 0.7rem;
-    color: #444;
+    color: var(--text-faint);
   }
 
   .char-count {
     font-size: 0.75rem;
-    color: #555;
+    color: var(--text-dim);
   }
 
   .char-count.warn {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 
   .compose-actions {
@@ -760,51 +745,17 @@
   }
 
   .attach-btn {
-    background: #2a2a4a;
-    color: #c4b5fd;
-    border: none;
     border-radius: 8px;
     padding: 0.55rem 1rem;
     font-size: 0.85rem;
-    cursor: pointer;
-    font-family: inherit;
     font-weight: 500;
-    transition:
-      background 0.15s,
-      color 0.15s;
-  }
-
-  .attach-btn:hover:not(:disabled) {
-    background: #3a3a5a;
-    color: #e0d4ff;
-  }
-
-  .attach-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .post-btn {
     flex: 1;
-    background: #7c3aed;
-    color: white;
-    border: none;
     border-radius: 8px;
     padding: 0.55rem;
     font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s;
-  }
-
-  .post-btn:hover:not(:disabled) {
-    background: #6d28d9;
-  }
-
-  .post-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .attachment-previews {
@@ -820,7 +771,7 @@
     height: 80px;
     border-radius: 6px;
     overflow: hidden;
-    border: 1px solid #2a2a4a;
+    border: 1px solid var(--border);
   }
 
   .attachment-preview img,
@@ -836,8 +787,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #0f0f23;
-    color: #888;
+    background: var(--bg-deep);
+    color: var(--text-secondary);
     font-size: 0.6rem;
     text-align: center;
     padding: 0.25rem;
@@ -862,25 +813,18 @@
     line-height: 1;
   }
 
-  .empty {
-    text-align: center;
-    color: #666;
-    padding: 2rem;
-  }
-
   .refresh {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
     margin: 1rem auto;
-    background: #2a2a4a;
-    color: #c4b5fd;
+    background: var(--bg-elevated);
+    color: var(--accent-light);
     border: none;
     border-radius: 8px;
     padding: 0.5rem 1.5rem;
     font-size: 0.85rem;
-    font-family: inherit;
     font-weight: 500;
     cursor: pointer;
     transition:
@@ -889,8 +833,8 @@
   }
 
   .refresh:hover:not(:disabled) {
-    background: #3a3a5a;
-    color: #e0d4ff;
+    background: var(--bg-elevated-hover);
+    color: var(--accent-light-hover);
   }
 
   .refresh:disabled {
@@ -905,7 +849,7 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: #7c3aed;
+    background: var(--accent);
     color: white;
     border: none;
     font-size: 1.2rem;
@@ -922,24 +866,15 @@
   }
 
   .scroll-top:hover {
-    background: #6d28d9;
+    background: var(--accent-hover);
     transform: scale(1.1);
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
   }
 
   .sync-failures {
     margin: 0.5rem 0;
-    border: 1px solid #7f1d1d;
+    border: 1px solid var(--danger-bg);
     border-radius: 8px;
-    background: #1a0a0a;
+    background: var(--danger-bg-subtle);
     overflow: hidden;
   }
 
@@ -950,20 +885,19 @@
     align-items: center;
     background: none;
     border: none;
-    color: #fca5a5;
+    color: var(--danger-text);
     padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
     cursor: pointer;
-    font-family: inherit;
   }
 
   .sync-failures-toggle:hover {
-    background: #2a0a0a;
+    background: var(--danger-bg-subtle-hover);
   }
 
   .toggle-arrow {
     font-size: 0.7rem;
-    color: #888;
+    color: var(--text-secondary);
   }
 
   .sync-failures-list {
@@ -974,12 +908,12 @@
 
   .sync-failures-list li {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-secondary);
     padding: 0.15rem 0;
   }
 
   .sync-failures-list code {
-    color: #f87171;
+    color: var(--color-error-light);
   }
 
   .pull-indicator {
@@ -989,18 +923,18 @@
     justify-content: flex-end;
     padding-bottom: 0.5rem;
     overflow: hidden;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.8rem;
   }
 
   .pull-arrow {
     font-size: 1.5rem;
-    color: #555;
+    color: var(--text-dim);
     transition: color 0.15s;
   }
 
   .pull-arrow.ready {
-    color: #a78bfa;
+    color: var(--accent-medium);
   }
 
   .pull-text {

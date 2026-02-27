@@ -128,8 +128,8 @@
 
 <style>
   .post {
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 0.875rem 1rem;
     margin-bottom: 0.4rem;
@@ -138,18 +138,7 @@
   }
 
   .post:hover {
-    border-color: #3a3a5a;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    border-color: var(--border-hover);
   }
 
   .repost-label {
@@ -158,11 +147,11 @@
     gap: 0.3rem;
     margin-bottom: 0.4rem;
     font-size: 0.75rem;
-    color: #666;
+    color: var(--text-tertiary);
   }
 
   .repost-author {
-    color: #c4b5fd;
+    color: var(--accent-light);
     text-decoration: none;
     font-weight: 600;
   }
@@ -202,20 +191,20 @@
   .author {
     font-weight: 600;
     font-size: 0.9rem;
-    color: #c4b5fd;
+    color: var(--accent-light);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .author.self {
-    color: #a78bfa;
+    color: var(--accent-medium);
   }
 
   .delete-btn {
     background: none;
     border: none;
-    color: #555;
+    color: var(--text-dim);
     font-size: 1.1rem;
     cursor: pointer;
     padding: 0.15rem 0.3rem;
@@ -227,12 +216,12 @@
   }
 
   .delete-btn:hover {
-    color: #ef4444;
-    background: #ef444415;
+    color: var(--color-error);
+    background: var(--color-error-bg-hover);
   }
 
   .time-link {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.75rem;
     white-space: nowrap;
     text-decoration: none;
@@ -249,11 +238,11 @@
     word-break: break-word;
     font-size: 0.95rem;
     line-height: 1.55;
-    color: #e8e8e8;
+    color: var(--text-post);
   }
 
   .post-content :global(a) {
-    color: #7dd3fc;
+    color: var(--color-link);
     text-decoration: none;
   }
 
@@ -262,7 +251,7 @@
   }
 
   .post-content :global(a.mention) {
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-weight: 600;
   }
 </style>

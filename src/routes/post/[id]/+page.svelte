@@ -184,20 +184,8 @@
 {/if}
 
 <style>
-  .back-link {
-    display: inline-block;
-    color: #a78bfa;
-    text-decoration: none;
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
-  }
-
-  .back-link:hover {
-    text-decoration: underline;
-  }
-
   .parent-post :global(.post) {
-    border-color: #3a3a5a;
+    border-color: var(--border-hover);
     margin-bottom: 1rem;
   }
 
@@ -205,17 +193,7 @@
     margin-bottom: 1rem;
   }
 
-  .section-title {
-    color: #888;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin: 0 0 0.5rem;
-  }
-
   .empty {
-    text-align: center;
-    color: #666;
     padding: 1rem;
     font-size: 0.85rem;
   }
@@ -223,11 +201,11 @@
   .not-found {
     text-align: center;
     padding: 2rem;
-    color: #888;
+    color: var(--text-secondary);
   }
 
   .not-found .hint {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-tertiary);
   }
 </style>

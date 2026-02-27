@@ -260,63 +260,13 @@
 {/if}
 
 <style>
-  .page-title {
-    font-size: 1.1rem;
-    color: #e0e0e0;
-    margin: 0 0 0.75rem;
-  }
-
-  .filter-bar {
-    display: flex;
-    gap: 0.4rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .filter-chip {
-    background: #2a2a4a;
-    color: #888;
-    border: 1px solid transparent;
-    border-radius: 999px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-    font-family: inherit;
-    transition:
-      background 0.2s,
-      color 0.2s,
-      border-color 0.2s;
-  }
-
-  .filter-chip:hover {
-    color: #c4b5fd;
-    border-color: #3a3a5a;
-  }
-
-  .filter-chip.active {
-    background: #7c3aed;
-    color: white;
-    border-color: #7c3aed;
-  }
-
-  .empty {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: #888;
-  }
-
-  .empty .hint {
-    font-size: 0.8rem;
-    color: #666;
-  }
-
   .notif {
-    border-bottom: 1px solid #1a1a3a;
+    border-bottom: 1px solid var(--border);
     padding: 0.75rem 0;
   }
 
   .notif.unread {
-    border-left: 3px solid #7c3aed;
+    border-left: 3px solid var(--accent);
     padding-left: 0.75rem;
   }
 
@@ -325,7 +275,7 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.85rem;
-    color: #888;
+    color: var(--text-secondary);
     margin-bottom: 0.5rem;
     flex-wrap: wrap;
   }
@@ -343,12 +293,12 @@
   }
 
   .actor-name {
-    color: #c4b5fd;
+    color: var(--accent-light);
     font-weight: 500;
   }
 
   .notif-label {
-    color: #888;
+    color: var(--text-secondary);
   }
 
   .notif-post {
@@ -356,7 +306,7 @@
   }
 
   .notif-deleted {
-    color: #555;
+    color: var(--text-dim);
     font-size: 0.8rem;
     font-style: italic;
     margin: 0.25rem 0 0;
@@ -364,7 +314,7 @@
 
   .follower-link {
     display: inline-block;
-    color: #a78bfa;
+    color: var(--accent-medium);
     font-size: 0.8rem;
     text-decoration: none;
     margin-top: 0.25rem;

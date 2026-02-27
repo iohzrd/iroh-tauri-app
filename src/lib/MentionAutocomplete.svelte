@@ -125,8 +125,8 @@
     bottom: 100%;
     left: 0;
     right: 0;
-    background: #16213e;
-    border: 1px solid #2a2a4a;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     max-height: 240px;
     overflow-y: auto;
@@ -142,25 +142,24 @@
     padding: 0.5rem 0.75rem;
     background: none;
     border: none;
-    color: #e0e0e0;
+    color: var(--text-primary);
     cursor: pointer;
-    font-family: inherit;
     font-size: 0.85rem;
     text-align: left;
   }
 
   .mention-option:hover,
   .mention-option.selected {
-    background: #2a2a4a;
+    background: var(--bg-elevated);
   }
 
   .mention-name {
     font-weight: 600;
-    color: #c4b5fd;
+    color: var(--accent-light);
   }
 
   .mention-id {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.75rem;
     margin-left: auto;
   }

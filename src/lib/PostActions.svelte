@@ -178,7 +178,7 @@
     gap: 0.25rem;
     margin-top: 0.6rem;
     padding-top: 0.5rem;
-    border-top: 1px solid #2a2a4a20;
+    border-top: 1px solid var(--border-faintest);
   }
 
   .action-btn {
@@ -187,34 +187,32 @@
     gap: 0.3rem;
     background: none;
     border: none;
-    color: #555;
+    color: var(--text-dim);
     cursor: pointer;
     font-size: 0.85rem;
     padding: 0.3rem 0.6rem;
     border-radius: 6px;
-    font-family: inherit;
     transition:
       color 0.15s,
       background 0.15s;
   }
 
   .action-btn:hover:not(:disabled) {
-    color: #c4b5fd;
-    background: #c4b5fd12;
+    color: var(--accent-light);
+    background: var(--accent-light-hover-bg);
   }
 
   .action-btn:disabled {
-    opacity: 0.5;
     cursor: not-allowed;
   }
 
   .action-btn.active {
-    color: #f87171;
+    color: var(--color-error-light);
   }
 
   .action-btn.active:hover:not(:disabled) {
-    color: #f87171;
-    background: #f8717112;
+    color: var(--color-error-light);
+    background: var(--color-error-light-hover-bg);
   }
 
   .action-btn.bookmark {
@@ -222,12 +220,12 @@
   }
 
   .action-btn.bookmark.active {
-    color: #fbbf24;
+    color: var(--color-bookmark);
   }
 
   .action-btn.bookmark.active:hover:not(:disabled) {
-    color: #fbbf24;
-    background: #fbbf2412;
+    color: var(--color-bookmark);
+    background: var(--color-bookmark-hover-bg);
   }
 
   .icon {
