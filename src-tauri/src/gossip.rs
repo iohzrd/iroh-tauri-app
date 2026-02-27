@@ -306,7 +306,7 @@ impl FeedManager {
                                             short_id(&pk),
                                             profile.display_name
                                         );
-                                        if let Err(e) = storage.save_remote_profile(&pk, &profile) {
+                                        if let Err(e) = storage.save_profile(&pk, &profile) {
                                             log::error!("[gossip-rx] failed to store profile: {e}");
                                         }
                                         let _ = app_handle.emit("profile-updated", &pk);

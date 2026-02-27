@@ -43,7 +43,11 @@ async fn get_node_id(state: State<'_, Arc<AppState>>) -> Result<String, String> 
 
 #[tauri::command]
 async fn get_my_profile(state: State<'_, Arc<AppState>>) -> Result<Option<Profile>, String> {
-    state.storage.get_profile().map_err(|e| e.to_string())
+    let node_id = state.endpoint.id().to_string();
+    state
+        .storage
+        .get_profile(&node_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -55,6 +59,7 @@ async fn save_my_profile(
     avatar_ticket: Option<String>,
     is_private: bool,
 ) -> Result<(), String> {
+    let node_id = state.endpoint.id().to_string();
     let profile = Profile {
         display_name: display_name.clone(),
         bio: bio.clone(),
@@ -65,7 +70,7 @@ async fn save_my_profile(
     validate_profile(&profile)?;
     state
         .storage
-        .save_profile(&profile)
+        .save_profile(&node_id, &profile)
         .map_err(|e| e.to_string())?;
     log::info!("[profile] saved profile: {display_name} (private={is_private})");
     let feed = state.feed.lock().await;
@@ -83,7 +88,7 @@ async fn get_remote_profile(
 ) -> Result<Option<Profile>, String> {
     state
         .storage
-        .get_remote_profile(&pubkey)
+        .get_profile(&pubkey)
         .map_err(|e| e.to_string())
 }
 
@@ -273,7 +278,7 @@ fn process_sync_result(
         stored += 1;
     }
     if let Some(profile) = &result.profile
-        && let Err(e) = storage.save_remote_profile(pubkey, profile)
+        && let Err(e) = storage.save_profile(pubkey, profile)
     {
         log::error!("[{label}] failed to store profile: {e}");
     }
@@ -1256,7 +1261,9 @@ pub fn run() {
                 let gossip = Gossip::builder().spawn(endpoint.clone());
                 log::info!("[setup] gossip started");
 
-                let sync_handler = sync::SyncHandler::new(storage_clone.clone());
+                let node_id_str = endpoint.id().to_string();
+                let sync_handler =
+                    sync::SyncHandler::new(storage_clone.clone(), node_id_str.clone());
                 let dm_handler = DmHandler::new(
                     storage_clone.clone(),
                     handle.clone(),
@@ -1285,7 +1292,7 @@ pub fn run() {
                     log::info!("[setup] own gossip feed started");
                 }
 
-                if let Ok(Some(profile)) = storage_clone.get_profile() {
+                if let Ok(Some(profile)) = storage_clone.get_profile(&node_id_str) {
                     if let Err(e) = feed.broadcast_profile(&profile).await {
                         log::error!("[setup] failed to broadcast profile: {e}");
                     } else {

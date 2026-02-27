@@ -29,50 +29,31 @@ impl std::fmt::Debug for Storage {
 
 impl Storage {
     const MIGRATIONS: &'static [(&'static str, &'static str)] = &[
-        ("001_initial", include_str!("../migrations/001_initial.sql")),
         (
-            "002_avatar_ticket",
-            include_str!("../migrations/002_avatar_ticket.sql"),
+            "001_profiles",
+            include_str!("../migrations/001_profiles.sql"),
+        ),
+        ("002_follows", include_str!("../migrations/002_follows.sql")),
+        ("003_posts", include_str!("../migrations/003_posts.sql")),
+        (
+            "004_interactions",
+            include_str!("../migrations/004_interactions.sql"),
         ),
         (
-            "003_direct_messages",
-            include_str!("../migrations/003_direct_messages.sql"),
+            "005_direct_messages",
+            include_str!("../migrations/005_direct_messages.sql"),
         ),
         (
-            "004_outbox_message_id",
-            include_str!("../migrations/004_outbox_message_id.sql"),
+            "006_bookmarks",
+            include_str!("../migrations/006_bookmarks.sql"),
         ),
         (
-            "005_interactions",
-            include_str!("../migrations/005_interactions.sql"),
+            "007_moderation",
+            include_str!("../migrations/007_moderation.sql"),
         ),
         (
-            "006_post_replies",
-            include_str!("../migrations/006_post_replies.sql"),
-        ),
-        (
-            "007_signatures",
-            include_str!("../migrations/007_signatures.sql"),
-        ),
-        (
-            "008_bookmarks",
-            include_str!("../migrations/008_bookmarks.sql"),
-        ),
-        (
-            "009_mute_block",
-            include_str!("../migrations/009_mute_block.sql"),
-        ),
-        (
-            "010_quote_posts",
-            include_str!("../migrations/010_quote_posts.sql"),
-        ),
-        (
-            "011_mentions",
-            include_str!("../migrations/011_mentions.sql"),
-        ),
-        (
-            "012_private_profile",
-            include_str!("../migrations/012_private_profile.sql"),
+            "008_mentions",
+            include_str!("../migrations/008_mentions.sql"),
         ),
     ];
 
@@ -94,6 +75,7 @@ impl Storage {
                 applied_at INTEGER NOT NULL
             )",
         )?;
+
         for (name, sql) in Self::MIGRATIONS {
             let already_applied: bool = conn.query_row(
                 "SELECT COUNT(*) > 0 FROM schema_migrations WHERE name=?1",
@@ -112,25 +94,25 @@ impl Storage {
         Ok(())
     }
 
-    // -- Profile --
+    // -- Profiles --
 
-    pub fn save_profile(&self, profile: &Profile) -> anyhow::Result<()> {
+    pub fn save_profile(&self, pubkey: &str, profile: &Profile) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap();
         db.execute(
-            "INSERT INTO profile (key, display_name, bio, avatar_hash, avatar_ticket, is_private)
-             VALUES ('self', ?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(key) DO UPDATE SET display_name=?1, bio=?2, avatar_hash=?3, avatar_ticket=?4, is_private=?5",
-            params![profile.display_name, profile.bio, profile.avatar_hash, profile.avatar_ticket, profile.is_private as i32],
+            "INSERT INTO profiles (pubkey, display_name, bio, avatar_hash, avatar_ticket, is_private)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(pubkey) DO UPDATE SET display_name=?2, bio=?3, avatar_hash=?4, avatar_ticket=?5, is_private=?6",
+            params![pubkey, profile.display_name, profile.bio, profile.avatar_hash, profile.avatar_ticket, profile.is_private as i32],
         )?;
         Ok(())
     }
 
-    pub fn get_profile(&self) -> anyhow::Result<Option<Profile>> {
+    pub fn get_profile(&self, pubkey: &str) -> anyhow::Result<Option<Profile>> {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare(
-            "SELECT display_name, bio, avatar_hash, avatar_ticket, is_private FROM profile WHERE key='self'",
+            "SELECT display_name, bio, avatar_hash, avatar_ticket, is_private FROM profiles WHERE pubkey=?1",
         )?;
-        let mut rows = stmt.query([])?;
+        let mut rows = stmt.query(params![pubkey])?;
         match rows.next()? {
             Some(row) => Ok(Some(Profile {
                 display_name: row.get(0)?,
@@ -701,50 +683,12 @@ impl Storage {
         Ok(count as u64)
     }
 
-    // -- Remote Profiles --
-
-    pub fn save_remote_profile(&self, pubkey: &str, profile: &Profile) -> anyhow::Result<()> {
-        let db = self.db.lock().unwrap();
-        db.execute(
-            "INSERT INTO remote_profiles (pubkey, display_name, bio, avatar_hash, avatar_ticket, is_private)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(pubkey) DO UPDATE SET display_name=?2, bio=?3, avatar_hash=?4, avatar_ticket=?5, is_private=?6",
-            params![
-                pubkey,
-                profile.display_name,
-                profile.bio,
-                profile.avatar_hash,
-                profile.avatar_ticket,
-                profile.is_private as i32,
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_remote_profile(&self, pubkey: &str) -> anyhow::Result<Option<Profile>> {
-        let db = self.db.lock().unwrap();
-        let mut stmt = db.prepare(
-            "SELECT display_name, bio, avatar_hash, avatar_ticket, is_private FROM remote_profiles WHERE pubkey=?1",
-        )?;
-        let mut rows = stmt.query(params![pubkey])?;
-        match rows.next()? {
-            Some(row) => Ok(Some(Profile {
-                display_name: row.get(0)?,
-                bio: row.get(1)?,
-                avatar_hash: row.get(2)?,
-                avatar_ticket: row.get(3)?,
-                is_private: row.get::<_, i32>(4)? != 0,
-            })),
-            None => Ok(None),
-        }
-    }
-
-    pub fn is_private_profile(&self) -> anyhow::Result<bool> {
+    pub fn is_private_profile(&self, pubkey: &str) -> anyhow::Result<bool> {
         let db = self.db.lock().unwrap();
         let result: Option<i32> = db
             .query_row(
-                "SELECT is_private FROM profile WHERE key='self'",
-                [],
+                "SELECT is_private FROM profiles WHERE pubkey=?1",
+                params![pubkey],
                 |row| row.get(0),
             )
             .ok();

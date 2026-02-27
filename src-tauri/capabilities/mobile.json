@@ -11,6 +11,7 @@
     "barcode-scanner:allow-request-permissions",
     "barcode-scanner:allow-open-app-settings",
     "deep-link:default",
-    "haptics:default"
+    "haptics:default",
+    "notification:default"
   ]
 }

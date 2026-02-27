@@ -1,4 +1,3 @@
--- DM conversations
 CREATE TABLE IF NOT EXISTS dm_conversations (
     conversation_id TEXT PRIMARY KEY,
     peer_pubkey TEXT NOT NULL UNIQUE,
@@ -7,10 +6,8 @@ CREATE TABLE IF NOT EXISTS dm_conversations (
     unread_count INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_dm_conversations_last_msg
-    ON dm_conversations(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dm_conversations_last_msg ON dm_conversations(last_message_at DESC);
 
--- DM messages (decrypted content stored locally)
 CREATE TABLE IF NOT EXISTS dm_messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
@@ -24,22 +21,19 @@ CREATE TABLE IF NOT EXISTS dm_messages (
     reply_to TEXT,
     FOREIGN KEY (conversation_id) REFERENCES dm_conversations(conversation_id)
 );
-CREATE INDEX IF NOT EXISTS idx_dm_messages_conv_time
-    ON dm_messages(conversation_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_dm_messages_conv_time ON dm_messages(conversation_id, timestamp DESC);
 
--- DM outbox (pending messages for offline peers)
 CREATE TABLE IF NOT EXISTS dm_outbox (
     id TEXT PRIMARY KEY,
     peer_pubkey TEXT NOT NULL,
     envelope_json TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     retry_count INTEGER NOT NULL DEFAULT 0,
-    last_retry_at INTEGER
+    last_retry_at INTEGER,
+    message_id TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_dm_outbox_peer
-    ON dm_outbox(peer_pubkey, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_dm_outbox_peer ON dm_outbox(peer_pubkey, created_at ASC);
 
--- Ratchet session state (serialized crypto state)
 CREATE TABLE IF NOT EXISTS dm_ratchet_sessions (
     peer_pubkey TEXT PRIMARY KEY,
     state_json TEXT NOT NULL,

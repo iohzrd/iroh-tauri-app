@@ -48,11 +48,12 @@ async fn read_frame(recv: &mut iroh::endpoint::RecvStream) -> anyhow::Result<Opt
 #[derive(Debug, Clone)]
 pub struct SyncHandler {
     storage: Arc<Storage>,
+    node_id: String,
 }
 
 impl SyncHandler {
-    pub fn new(storage: Arc<Storage>) -> Self {
-        Self { storage }
+    pub fn new(storage: Arc<Storage>, node_id: String) -> Self {
+        Self { storage, node_id }
     }
 }
 
@@ -72,7 +73,10 @@ impl ProtocolHandler for SyncHandler {
         }
 
         // Reject non-followers when profile is private
-        if self.storage.is_private_profile().unwrap_or(false)
+        if self
+            .storage
+            .is_private_profile(&self.node_id)
+            .unwrap_or(false)
             && !self.storage.is_follower(&remote_str).unwrap_or(false)
         {
             log::warn!(
@@ -132,7 +136,7 @@ impl ProtocolHandler for SyncHandler {
             SyncMode::NeedIdDiff
         };
 
-        let profile = self.storage.get_profile().ok().flatten();
+        let profile = self.storage.get_profile(&self.node_id).ok().flatten();
 
         log::info!(
             "[sync-server] author={}, client=({}/{}/ts={}/its={}), server=({}/{}/after={}/iafter={}), mode={:?}",

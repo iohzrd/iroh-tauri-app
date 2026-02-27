@@ -69,6 +69,7 @@
         bio: bio.trim(),
         avatarHash,
         avatarTicket,
+        isPrivate: false,
       });
       goto("/");
     } catch (e) {

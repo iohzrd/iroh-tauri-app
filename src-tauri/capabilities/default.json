@@ -9,6 +9,7 @@
     "core:webview:allow-set-webview-zoom",
     "deep-link:default",
     "log:default",
-    "os:default"
+    "os:default",
+    "notification:default"
   ]
 }
