@@ -229,6 +229,14 @@
     <a href="/follows" class:active={page.url.pathname === "/follows"}
       >Follows</a
     >
+    <a
+      href="/settings"
+      class="settings-link"
+      class:active={page.url.pathname === "/settings"}
+      title="Settings"
+    >
+      &#x2699;
+    </a>
     {#if status}
       <span
         class="status-indicator"
@@ -306,6 +314,18 @@
     padding: 0 3px;
     margin-left: 1px;
     vertical-align: super;
+  }
+
+  .settings-link {
+    flex: 0 0 auto;
+    padding: 0.5rem;
+    font-size: 1.2rem;
+    min-width: 36px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 2px solid transparent;
   }
 
   .status-indicator {
