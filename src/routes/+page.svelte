@@ -825,7 +825,7 @@
 
   .scroll-top {
     position: fixed;
-    bottom: 1.5rem;
+    bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 1rem);
     right: 1.5rem;
     width: 44px;
     height: 44px;
@@ -849,6 +849,12 @@
   .scroll-top:hover {
     background: var(--accent-hover);
     transform: scale(1.1);
+  }
+
+  @media (min-width: 768px) {
+    .scroll-top {
+      bottom: 1.5rem;
+    }
   }
 
   .sync-failures {

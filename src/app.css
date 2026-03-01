@@ -128,6 +128,15 @@
 
   /* -- Font family -- */
   --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* -- Layout -- */
+  --sidebar-width: 240px;
+  --content-max-width: 720px;
+  --bottom-nav-height: 56px;
+  --mobile-header-height: 48px;
+  --z-sidebar: 10;
+  --z-bottom-nav: 10;
+  --z-mobile-header: 10;
 }
 
 /* ==========================================================================
@@ -427,6 +436,12 @@ button .btn-spinner {
 
 .toast.error {
   border-left: 3px solid var(--color-error);
+}
+
+@media (max-width: 767px) {
+  .toast {
+    bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 1rem);
+  }
 }
 
 @keyframes toastIn {

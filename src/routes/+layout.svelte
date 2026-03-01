@@ -13,6 +13,9 @@
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { goto } from "$app/navigation";
   import type { NodeStatus, Post, StoredMessage } from "$lib/types";
+  import Sidebar from "$lib/Sidebar.svelte";
+  import BottomNav from "$lib/BottomNav.svelte";
+  import MobileHeader from "$lib/MobileHeader.svelte";
 
   const ZOOM_KEY = "app-zoom-level";
   const ZOOM_STEP = 0.2;
@@ -202,156 +205,57 @@
   });
 </script>
 
-<div class="app">
-  <nav>
-    <a href="/" class:active={page.url.pathname === "/"}>Feed</a>
-    <a href="/activity" class:active={page.url.pathname === "/activity"}>
-      Notifications
-      {#if unreadNotificationCount > 0}
-        <span class="unread-badge">{unreadNotificationCount}</span>
-      {/if}
-    </a>
-    {#if nodeId}
-      <a
-        href="/profile/{nodeId}"
-        class:active={page.url.pathname === `/profile/${nodeId}`}>Profile</a
-      >
+<div class="app-shell">
+  <Sidebar
+    {nodeId}
+    {status}
+    {unreadDmCount}
+    {unreadNotificationCount}
+    currentPath={page.url.pathname}
+  />
+
+  <MobileHeader {status} />
+
+  <div class="main-column">
+    {#if status && !status.has_relay}
+      <div class="relay-banner">
+        <span class="relay-banner-dot"></span>
+        <span>Relay disconnected -- messages and sync may not work</span>
+      </div>
     {/if}
-    <a
-      href="/messages"
-      class:active={page.url.pathname.startsWith("/messages")}
-    >
-      Messages
-      {#if unreadDmCount > 0}
-        <span class="unread-badge">{unreadDmCount}</span>
-      {/if}
-    </a>
-    <a href="/follows" class:active={page.url.pathname === "/follows"}
-      >Follows</a
-    >
-    <a
-      href="/settings"
-      class="settings-link"
-      class:active={page.url.pathname === "/settings"}
-      title="Settings"
-    >
-      &#x2699;
-    </a>
-    {#if status}
-      <span
-        class="status-indicator"
-        title={status.has_relay
-          ? `Relay connected | ${status.follow_count} following | ${status.follower_count} follower(s)`
-          : "No relay connection"}
-      >
-        <span
-          class="status-dot"
-          class:connected={status.has_relay}
-          class:disconnected={!status.has_relay}
-        ></span>
-      </span>
-    {/if}
-  </nav>
-  {#if status && !status.has_relay}
-    <div class="relay-banner">
-      <span class="relay-banner-dot"></span>
-      <span>Relay disconnected -- messages and sync may not work</span>
-    </div>
-  {/if}
-  <main>
-    {@render children()}
-  </main>
+    <main>
+      {@render children()}
+    </main>
+  </div>
+
+  <BottomNav
+    {nodeId}
+    {unreadDmCount}
+    {unreadNotificationCount}
+    currentPath={page.url.pathname}
+  />
 </div>
 
 <style>
-  .app {
-    max-width: 640px;
-    margin: 0 auto;
+  .app-shell {
+    min-height: 100vh;
+  }
+
+  .main-column {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
   }
 
-  nav {
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    background: var(--bg-base);
-    z-index: var(--z-nav);
-    padding-top: env(safe-area-inset-top);
-  }
-
-  nav a {
+  main {
+    max-width: var(--content-max-width);
+    width: 100%;
+    margin: 0 auto;
+    padding: var(--space-lg) var(--space-xl);
+    padding-bottom: calc(
+      var(--bottom-nav-height) + env(safe-area-inset-bottom) + var(--space-lg)
+    );
     flex: 1;
-    text-align: center;
-    padding: 0.7rem 0.25rem;
-    color: var(--text-muted);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: var(--text-base);
-    transition:
-      color var(--transition-fast),
-      border-color var(--transition-fast);
-    border-bottom: 2px solid transparent;
-    white-space: nowrap;
-  }
-
-  nav a:hover {
-    color: var(--accent-light);
-  }
-
-  nav a.active {
-    color: var(--accent-medium);
-    border-bottom-color: var(--accent-medium);
-  }
-
-  .unread-badge {
-    font-size: 0.55rem;
-    min-width: 14px;
-    height: 14px;
-    padding: 0 3px;
-    margin-left: 1px;
-    vertical-align: super;
-  }
-
-  .settings-link {
-    flex: 0 0 auto;
-    padding: 0.5rem;
-    font-size: 1.2rem;
-    min-width: 36px;
-    min-height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-bottom: 2px solid transparent;
-  }
-
-  .status-indicator {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5rem;
-    flex-shrink: 0;
-    min-width: 36px;
-    min-height: 36px;
-  }
-
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-  }
-
-  .status-dot.connected {
-    background: var(--color-success);
-    box-shadow: 0 0 4px var(--glow-success);
-  }
-
-  .status-dot.disconnected {
-    background: var(--color-error);
-    box-shadow: 0 0 4px var(--glow-error);
   }
 
   .relay-banner {
@@ -385,9 +289,14 @@
     }
   }
 
-  main {
-    padding: 1rem 1.5rem;
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
-    flex: 1;
+  @media (min-width: 768px) {
+    .app-shell {
+      padding-left: var(--sidebar-width);
+    }
+
+    main {
+      padding-bottom: var(--space-lg);
+    }
   }
+
 </style>
