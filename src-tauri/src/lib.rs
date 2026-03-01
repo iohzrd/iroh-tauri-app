@@ -829,7 +829,7 @@ async fn send_dm(
         content,
         timestamp,
         media: media.unwrap_or_default(),
-        read: true,
+        read: false,
         delivered: false,
         reply_to,
     };
@@ -1484,7 +1484,7 @@ pub fn run() {
                 let outbox_storage = storage_clone.clone();
                 tokio::spawn(async move {
                     loop {
-                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
                         let peers = match outbox_storage.get_all_outbox_peers() {
                             Ok(p) => p,
                             Err(e) => {
